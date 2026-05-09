@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>bode-sketch - 传递函数可视化工具</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 自定义一些滚动条样式 */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        
+        /* 隐藏数值输入框的上下箭头 */
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { 
+            -webkit-appearance: none; 
+            margin: 0; 
+        }
+        input[type=number] {
+            -moz-appearance: textfield;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 h-screen flex flex-col overflow-hidden font-sans">
+
+    <!-- 顶栏 -->
+    <header class="bg-white border-b border-slate-200 h-14 flex items-center px-4 shrink-0 shadow-sm z-10">
+        <div class="flex items-center gap-2">
+            <div class="w-8 h-8 bg-blue-600 rounded flex items-center justify-center text-white font-bold text-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5M9 11.25v1.5M12 9v3.75m3-6v6" />
+                </svg>
+            </div>
+            <h1 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-600">bode-sketch</h1>
+        </div>
+        <div class="ml-auto flex items-center gap-4 text-sm">
+            <button class="flex items-center gap-1 text-slate-500 hover:text-slate-800 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" /></svg>
+                帮助
+            </button>
+            <button class="bg-blue-600 text-white px-3 py-1.5 rounded-md hover:bg-blue-700 transition-colors font-medium">
+                导出报告
+            </button>
+        </div>
+    </header>
+
+    <!-- 主体内容区 -->
+    <div class="flex-1 flex flex-col md:flex-row overflow-hidden">
+        
+        <!-- 左侧：主要图形展示区 -->
+        <main class="flex-1 flex flex-col overflow-y-auto bg-slate-100 p-4 gap-4">
+            
+            <!-- 波特图 -->
+            <div class="bg-white border border-slate-200 rounded-lg shadow-sm flex flex-col min-h-[400px] flex-[2]">
+                <div class="px-4 py-3 border-b border-slate-100 flex justify-between items-center shrink-0">
+                    <div class="flex items-center gap-4">
+                        <h3 class="font-medium text-slate-800">波特图 (Bode Plot)</h3>
+                        <!-- 模式切换按钮 -->
+                        <div class="flex bg-slate-100 p-1 rounded-md border border-slate-200">
+                            <button class="px-3 py-1 text-xs rounded bg-white shadow-sm font-medium text-slate-800">精确模式</button>
+                            <button class="px-3 py-1 text-xs rounded text-slate-500 hover:text-slate-700 transition-colors">折线草绘</button>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center gap-4">
+                        <div class="flex items-center gap-3">
+                            <div class="flex items-center gap-1 text-xs">
+                                <div class="w-3 h-0.5 bg-blue-600"></div> <span class="text-slate-500">幅度</span>
+                            </div>
+                            <div class="flex items-center gap-1 text-xs">
+                                <div class="w-3 h-0.5 bg-orange-500"></div> <span class="text-slate-500">相位</span>
+                            </div>
+                        </div>
+
+                        <!-- 波特图设置弹出菜单 (此处模拟打开状态) -->
+                        <div class="relative">
+                            <button class="p-1.5 text-slate-600 bg-slate-100 border border-slate-200 rounded hover:bg-slate-200 transition-colors shadow-inner flex items-center justify-center">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 011.45.12l.773.774c.39.389.44 1.002.12 1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.397.505.71.93.78l.893.15c.543.09.94.56.94 1.109v1.094c0 .55-.397 1.02-.94 1.11l-.893.149c-.425.07-.765.383-.93.78-.165.398-.143.854.107 1.204l.527.738a1.125 1.125 0 01-.12 1.45l-.774.773a1.125 1.125 0 01-1.449.12l-.738-.527c-.35-.25-.806-.272-1.203-.107-.397.165-.71-.505-.781-.929l-.149.894c-.09.542-.56.94-1.11.94h-1.094c-.55 0-1.019-.398-1.11-.94l-.148-.894c-.071-.424-.384-.764-.781-.93-.398-.164-.854-.142-1.204.108l-.738.527c-.389.39-1.002.44-1.45.12l-.773-.774a1.125 1.125 0 01-.12-1.45l.527-.737c.25-.35.273-.806.108-1.204-.165-.397-.505-.71-.93-.78l-.894-.15c-.542-.09-.94-.56-.94-1.109v-1.094c0-.55.398-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.107-1.204l-.527-.738a1.125 1.125 0 01.12-1.45l.773-.773a1.125 1.125 0 011.45-.12l.737.527c.35.25.807.272 1.204.107.397-.165.71-.505.78-.929l.15-.894z" />
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                </svg>
+                            </button>
+                            
+                            <!-- 弹出面板 -->
+                            <div class="absolute right-0 top-full mt-2 w-64 bg-white border border-slate-200 rounded-lg shadow-xl z-20 p-3">
+                                <h4 class="text-xs font-semibold text-slate-500 mb-3 border-b border-slate-100 pb-2">波特图范围设置</h4>
+                                <div class="space-y-4">
+                                    <div>
+                                        <div class="flex justify-between items-center mb-1.5">
+                                            <label class="text-xs text-slate-700 font-medium">频率 (rad/s)</label>
+                                            <label class="flex items-center gap-1 text-xs text-slate-500 cursor-pointer">
+                                                <input type="checkbox" checked class="rounded border-slate-300 text-blue-600 focus:ring-blue-500">
+                                                自动
+                                            </label>
+                                        </div>
+                                        <div class="flex items-center gap-2 opacity-50">
+                                            <input type="number" value="0.1" disabled class="w-full border border-slate-200 bg-slate-50 rounded px-2 py-1 text-xs">
+                                            <span class="text-xs text-slate-400">至</span>
+                                            <input type="number" value="1000" disabled class="w-full border border-slate-200 bg-slate-50 rounded px-2 py-1 text-xs">
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between items-center mb-1.5">
+                                            <label class="text-xs text-slate-700 font-medium">幅度 (dB)</label>
+                                            <label class="flex items-center gap-1 text-xs text-slate-500 cursor-pointer">
+                                                <input type="checkbox" checked class="rounded border-slate-300 text-blue-600 focus:ring-blue-500">
+                                                自动
+                                            </label>
+                                        </div>
+                                        <div class="flex items-center gap-2 opacity-50">
+                                            <input type="number" value="-60" disabled class="w-full border border-slate-200 bg-slate-50 rounded px-2 py-1 text-xs">
+                                            <span class="text-xs text-slate-400">至</span>
+                                            <input type="number" value="40" disabled class="w-full border border-slate-200 bg-slate-50 rounded px-2 py-1 text-xs">
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between items-center mb-1.5">
+                                            <label class="text-xs text-slate-700 font-medium">相位 (°)</label>
+                                            <label class="flex items-center gap-1 text-xs text-slate-500 cursor-pointer">
+                                                <input type="checkbox" checked class="rounded border-slate-300 text-blue-600 focus:ring-blue-500">
+                                                自动
+                                            </label>
+                                        </div>
+                                        <div class="flex items-center gap-2 opacity-50">
+                                            <input type="number" value="-180" disabled class="w-full border border-slate-200 bg-slate-50 rounded px-2 py-1 text-xs">
+                                            <span class="text-xs text-slate-400">至</span>
+                                            <input type="number" value="180" disabled class="w-full border border-slate-200 bg-slate-50 rounded px-2 py-1 text-xs">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 波特图绘制区域 -->
+                <div class="flex-1 p-4 flex flex-col gap-2 relative">
+                    <!-- 贡献高亮提示 (当选中零极点时显示) -->
+                    <div class="absolute top-6 left-1/2 -translate-x-1/2 bg-blue-50 border border-blue-200 text-blue-700 px-3 py-1 rounded-full text-xs font-medium z-10 shadow-sm flex items-center gap-2">
+                        展示选中对象贡献 (Z2, Z3)
+                        <button class="hover:text-blue-900 bg-white rounded-full p-0.5">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3 h-3"><path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" /></svg>
+                        </button>
+                    </div>
+
+                    <!-- 幅频响应占位 -->
+                    <div class="flex-1 relative border-l border-b border-slate-300 ml-6">
+                        <!-- 网格线 -->
+                        <div class="absolute inset-0 bg-[linear-gradient(to_right,#f1f5f9_1px,transparent_1px),linear-gradient(to_bottom,#f1f5f9_1px,transparent_1px)] bg-[size:10%_20%]"></div>
+                        
+                        <!-- 完整响应 (半透明) -->
+                        <svg class="absolute inset-0 w-full h-full" preserveAspectRatio="none">
+                            <path d="M 0,20 Q 20,20 40,25 T 100,50 T 200,90 T 300,120 T 400,160 T 500,180" fill="none" stroke="#94a3b8" stroke-width="2" class="opacity-40" />
+                        </svg>
+                        
+                        <!-- 选中对象贡献 (高亮) -->
+                        <svg class="absolute inset-0 w-full h-full" preserveAspectRatio="none">
+                            <path d="M 0,50 L 150,50 Q 180,50 200,30 Q 220,50 300,120 L 500,180" fill="none" stroke="#2563eb" stroke-width="3" />
+                        </svg>
+                        
+                        <!-- Y轴刻度 -->
+                        <div class="absolute left-[-24px] top-0 bottom-0 flex flex-col justify-between text-[10px] text-slate-500">
+                            <span>40</span>
+                            <span>0</span>
+                            <span>-40</span>
+                        </div>
+                    </div>
+
+                    <!-- 相频响应占位 -->
+                    <div class="flex-1 relative border-l border-b border-slate-300 ml-6 mb-4">
+                         <!-- 网格线 -->
+                         <div class="absolute inset-0 bg-[linear-gradient(to_right,#f1f5f9_1px,transparent_1px),linear-gradient(to_bottom,#f1f5f9_1px,transparent_1px)] bg-[size:10%_25%]"></div>
+                         
+                         <!-- 完整响应 (半透明) -->
+                         <svg class="absolute inset-0 w-full h-full" preserveAspectRatio="none">
+                             <path d="M 0,20 C 50,20 80,80 120,90 S 200,120 300,160 S 450,160 500,160" fill="none" stroke="#cbd5e1" stroke-width="2" class="opacity-40" />
+                         </svg>
+                         
+                         <!-- 选中对象贡献 (高亮) -->
+                         <svg class="absolute inset-0 w-full h-full" preserveAspectRatio="none">
+                             <path d="M 0,50 L 120,50 C 180,50 180,140 240,140 L 500,140" fill="none" stroke="#ea580c" stroke-width="3" stroke-dasharray="4" />
+                         </svg>
+
+                         <!-- Y轴刻度 -->
+                        <div class="absolute left-[-24px] top-0 bottom-0 flex flex-col justify-between text-[10px] text-slate-500">
+                            <span>180</span>
+                            <span>0</span>
+                            <span>-180</span>
+                        </div>
+                         
+                         <!-- X轴刻度 (Log) -->
+                        <div class="absolute bottom-[-20px] left-0 right-0 flex justify-between text-[10px] text-slate-500 px-2">
+                            <span>0.1</span>
+                            <span>1</span>
+                            <span>10</span>
+                            <span>100</span>
+                            <span>1000</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 冲激响应 -->
+            <div class="bg-white border border-slate-200 rounded-lg shadow-sm flex flex-col min-h-[250px] flex-1">
+                <div class="px-4 py-2 border-b border-slate-100 flex justify-between items-center relative">
+                    <h3 class="font-medium text-slate-800 text-sm">冲激响应 (Impulse Response)</h3>
+                    
+                    <!-- 设置按钮 (未打开状态) -->
+                    <button class="p-1 text-slate-400 hover:text-slate-600 rounded hover:bg-slate-100 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 011.45.12l.773.774c.39.389.44 1.002.12 1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.397.505.71.93.78l.893.15c.543.09.94.56.94 1.109v1.094c0 .55-.397 1.02-.94 1.11l-.893.149c-.425.07-.765.383-.93.78-.165.398-.143.854.107 1.204l.527.738a1.125 1.125 0 01-.12 1.45l-.774.773a1.125 1.125 0 01-1.449.12l-.738-.527c-.35-.25-.806-.272-1.203-.107-.397.165-.71-.505-.781-.929l-.149.894c-.09.542-.56.94-1.11.94h-1.094c-.55 0-1.019-.398-1.11-.94l-.148-.894c-.071-.424-.384-.764-.781-.93-.398-.164-.854-.142-1.204.108l-.738.527c-.389.39-1.002.44-1.45.12l-.773-.774a1.125 1.125 0 01-.12-1.45l.527-.737c.25-.35.273-.806.108-1.204-.165-.397-.505-.71-.93-.78l-.894-.15c-.542-.09-.94-.56-.94-1.109v-1.094c0-.55.398-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.107-1.204l-.527-.738a1.125 1.125 0 01.12-1.45l.773-.773a1.125 1.125 0 011.45-.12l.737.527c.35.25.807.272 1.204.107.397-.165.71-.505.78-.929l.15-.894z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                    </button>
+                </div>
+                <div class="flex-1 p-4 relative">
+                    <div class="absolute inset-4 border-l border-b border-slate-300 ml-6 mb-6">
+                        <!-- 占位波形 -->
+                        <svg class="absolute inset-0 w-full h-full" preserveAspectRatio="none" viewBox="0 0 100 100">
+                            <path d="M 0,50 L 1,10 Q 5,60 10,40 T 20,55 T 30,48 T 45,51 T 60,50 L 100,50" fill="none" stroke="#10b981" stroke-width="1.5" />
+                            <!-- 0刻度线 -->
+                            <line x1="0" y1="50" x2="100" y2="50" stroke="#cbd5e1" stroke-width="0.5" stroke-dasharray="2" />
+                        </svg>
+                        
+                        <div class="absolute left-[-24px] top-0 bottom-0 flex flex-col justify-between text-[10px] text-slate-500">
+                            <span>1</span>
+                            <span>0</span>
+                            <span>-1</span>
+                        </div>
+                        <div class="absolute bottom-[-20px] right-0 text-[10px] text-slate-500">时间 (s)</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 阶跃响应 -->
+            <div class="bg-white border border-slate-200 rounded-lg shadow-sm flex flex-col min-h-[250px] flex-1 mb-8">
+                <div class="px-4 py-2 border-b border-slate-100 flex justify-between items-center relative">
+                    <h3 class="font-medium text-slate-800 text-sm">阶跃响应 (Step Response)</h3>
+                    
+                    <!-- 设置按钮 (未打开状态) -->
+                    <button class="p-1 text-slate-400 hover:text-slate-600 rounded hover:bg-slate-100 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 011.45.12l.773.774c.39.389.44 1.002.12 1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.397.505.71.93.78l.893.15c.543.09.94.56.94 1.109v1.094c0 .55-.397 1.02-.94 1.11l-.893.149c-.425.07-.765.383-.93.78-.165.398-.143.854.107 1.204l.527.738a1.125 1.125 0 01-.12 1.45l-.774.773a1.125 1.125 0 01-1.449.12l-.738-.527c-.35-.25-.806-.272-1.203-.107-.397.165-.71-.505-.781-.929l-.149.894c-.09.542-.56.94-1.11.94h-1.094c-.55 0-1.019-.398-1.11-.94l-.148-.894c-.071-.424-.384-.764-.781-.93-.398-.164-.854-.142-1.204.108l-.738.527c-.389.39-1.002.44-1.45.12l-.773-.774a1.125 1.125 0 01-.12-1.45l.527-.737c.25-.35.273-.806.108-1.204-.165-.397-.505-.71-.93-.78l-.894-.15c-.542-.09-.94-.56-.94-1.109v-1.094c0-.55.398-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.107-1.204l-.527-.738a1.125 1.125 0 01.12-1.45l.773-.773a1.125 1.125 0 011.45-.12l.737.527c.35.25.807.272 1.204.107.397-.165.71-.505.78-.929l.15-.894z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                    </button>
+                </div>
+                <div class="flex-1 p-4 relative">
+                    <div class="absolute inset-4 border-l border-b border-slate-300 ml-6 mb-6">
+                        <!-- 占位波形 -->
+                        <svg class="absolute inset-0 w-full h-full" preserveAspectRatio="none" viewBox="0 0 100 100">
+                            <path d="M 0,90 C 5,90 8,10 15,30 S 25,40 30,35 S 40,38 50,38 L 100,38" fill="none" stroke="#8b5cf6" stroke-width="1.5" />
+                            <!-- 稳态值线 -->
+                            <line x1="0" y1="38" x2="100" y2="38" stroke="#cbd5e1" stroke-width="0.5" stroke-dasharray="2" />
+                        </svg>
+
+                        <div class="absolute left-[-24px] top-0 bottom-0 flex flex-col justify-between text-[10px] text-slate-500">
+                            <span>1</span>
+                            <span>0.5</span>
+                            <span>0</span>
+                        </div>
+                        <div class="absolute bottom-[-20px] right-0 text-[10px] text-slate-500">时间 (s)</div>
+                    </div>
+                </div>
+            </div>
+            
+        </main>
+
+        <!-- 右侧：控制与状态区 -->
+        <aside class="w-full md:w-[400px] xl:w-[450px] bg-white border-l border-slate-200 flex flex-col shrink-0 overflow-y-auto">
+            
+            <!-- 传递函数表达式 -->
+            <div class="p-4 border-b border-slate-200 bg-slate-50 shrink-0">
+                <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">传递函数 H(s)</h2>
+                <div class="bg-white border border-slate-200 rounded p-3 text-center overflow-x-auto shadow-inner">
+                    <div class="text-sm font-serif">
+                        <div class="border-b border-slate-400 pb-1 mb-1 inline-block px-2">
+                            100 × (s - 10) × (s² + 2s + 100)
+                        </div>
+                        <div class="px-2">
+                            (s + 5) × (s² + 10s + 1000)
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 零极点图 -->
+            <div class="p-4 border-b border-slate-200 shrink-0">
+                <div class="flex justify-between items-center mb-3">
+                    <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wider">零极点图 (PZ Map)</h2>
+                    <div class="flex items-center gap-2 text-xs">
+                        <span class="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">已选中 Z2, Z3</span>
+                        <button class="text-slate-500 hover:text-slate-800 border border-slate-300 rounded px-2 py-0.5 transition-colors">转实数</button>
+                    </div>
+                </div>
+                
+                <div class="aspect-square w-full max-w-[320px] mx-auto relative border border-slate-200 bg-slate-50 rounded-md overflow-hidden">
+                    <!-- 虚轴 -->
+                    <div class="absolute top-0 bottom-0 left-1/2 w-px bg-slate-400 -translate-x-1/2"></div>
+                    <!-- 实轴 -->
+                    <div class="absolute left-0 right-0 top-1/2 h-px bg-slate-400 -translate-y-1/2"></div>
+                    
+                    <!-- 稳定区域指示 (左半平面) -->
+                    <div class="absolute left-0 top-0 bottom-0 w-1/2 bg-blue-100 opacity-20"></div>
+
+                    <!-- 极点 1 (x) -->
+                    <div class="absolute left-[30%] top-[50%] w-4 h-4 -translate-x-1/2 -translate-y-1/2 text-red-500 font-bold text-xl leading-none flex items-center justify-center select-none cursor-pointer">×</div>
+                    
+                    <!-- 零点 1 (o) -->
+                    <div class="absolute left-[90%] top-[50%] w-3 h-3 -translate-x-1/2 -translate-y-1/2 border-2 border-green-500 rounded-full select-none cursor-pointer"></div>
+
+                    <!-- 零点 2 & 3 (共轭, 选中状态) -->
+                    <div class="absolute left-[45%] top-[20%] w-4 h-4 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center select-none cursor-pointer group z-10">
+                        <div class="absolute w-8 h-8 bg-blue-400 opacity-20 rounded-full scale-100 animate-pulse"></div>
+                        <div class="w-3 h-3 border-2 border-blue-600 bg-white rounded-full relative z-10 shadow-sm shadow-blue-400"></div>
+                    </div>
+                    <div class="absolute left-[45%] top-[80%] w-4 h-4 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center select-none cursor-pointer group z-10">
+                        <div class="absolute w-8 h-8 bg-blue-400 opacity-20 rounded-full scale-100 animate-pulse"></div>
+                        <div class="w-3 h-3 border-2 border-blue-600 bg-white rounded-full relative z-10 shadow-sm shadow-blue-400"></div>
+                    </div>
+                    
+                    <!-- 坐标轴标签 -->
+                    <span class="absolute right-2 top-[50%] -translate-y-full text-[10px] text-slate-500 mt-1">Re</span>
+                    <span class="absolute left-[50%] top-2 translate-x-1 text-[10px] text-slate-500">Im</span>
+                </div>
+            </div>
+
+            <!-- 参考增益设置 -->
+            <div class="p-4 border-b border-slate-200 shrink-0">
+                <div class="flex justify-between items-center mb-3">
+                    <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wider">参考频率设置</h2>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs text-slate-500 mb-1">参考频率 w_ref (rad/s)</label>
+                        <input type="number" value="1.0" class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-slate-500 mb-1">目标增益 G_ref</label>
+                        <div class="flex">
+                            <input type="number" value="20" class="w-full border border-slate-300 rounded-l px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 z-10">
+                            <select class="border border-l-0 border-slate-300 rounded-r bg-slate-50 px-2 py-1.5 text-sm focus:outline-none">
+                                <option>dB</option>
+                                <option>Linear</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 零点列表 -->
+            <div class="p-4 border-b border-slate-200 shrink-0">
+                <div class="flex justify-between items-center mb-3">
+                    <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                        <div class="w-3 h-3 rounded-full border-2 border-green-500 flex items-center justify-center"></div>
+                        零点 (Zeros)
+                    </h2>
+                    <button class="text-xs bg-green-50 text-green-600 border border-green-200 hover:bg-green-100 px-2 py-1 rounded flex items-center gap-1 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3 h-3"><path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" /></svg>
+                        添加
+                    </button>
+                </div>
+                
+                <div class="space-y-2">
+                    <!-- 零点项 1 (实数) -->
+                    <div class="bg-white border border-slate-200 rounded p-2 text-sm hover:border-green-300 transition-colors cursor-pointer group">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-xs font-medium text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded">Z1 (实)</span>
+                            <div class="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button class="text-[10px] text-slate-500 hover:text-slate-800 border border-slate-300 rounded px-1.5 py-0.5 transition-colors">转共轭</button>
+                                <button class="text-slate-400 hover:text-red-500 transition-colors">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path fill-rule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.808a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clip-rule="evenodd" /></svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div class="flex items-center border border-slate-200 rounded overflow-hidden">
+                                <span class="bg-slate-50 text-slate-500 text-xs px-2 py-1 border-r border-slate-200 w-10 text-center">Re</span>
+                                <input type="number" value="10" class="w-full px-2 py-1 focus:outline-none text-right">
+                            </div>
+                            <div class="flex items-center border border-slate-200 rounded overflow-hidden bg-slate-50">
+                                <span class="text-slate-400 text-xs px-2 py-1 border-r border-slate-200 w-10 text-center">Im</span>
+                                <input type="number" value="0" disabled class="w-full px-2 py-1 bg-transparent focus:outline-none text-right text-slate-400">
+                            </div>
+                            <div class="flex items-center border border-slate-200 rounded overflow-hidden">
+                                <span class="bg-slate-50 text-slate-500 text-xs px-2 py-1 border-r border-slate-200 w-10 text-center">w0</span>
+                                <input type="number" value="10" class="w-full px-2 py-1 focus:outline-none text-right">
+                            </div>
+                            <div class="flex items-center border border-slate-200 rounded overflow-hidden bg-slate-50">
+                                <span class="text-slate-400 text-xs px-2 py-1 border-r border-slate-200 w-10 text-center">Q</span>
+                                <input type="text" value="-" disabled class="w-full px-2 py-1 bg-transparent focus:outline-none text-right text-slate-400">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 零点项 2 (复共轭，高亮选中状态) -->
+                    <div class="bg-blue-50 border border-blue-400 rounded p-2 text-sm shadow-sm relative">
+                        <!-- 选中指示器 -->
+                        <div class="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 rounded-l"></div>
+                        
+                        <div class="flex justify-between items-center mb-2 pl-1">
+                            <span class="text-xs font-medium text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded">Z2, Z3 (复共轭)</span>
+                            <div class="flex items-center gap-1.5 transition-opacity">
+                                <button class="text-[10px] text-blue-600 hover:text-blue-900 border border-blue-300 rounded px-1.5 py-0.5 transition-colors">转实数</button>
+                                <button class="text-slate-400 hover:text-red-500 transition-colors">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path fill-rule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.808a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clip-rule="evenodd" /></svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 pl-1">
+                            <div class="flex items-center border border-blue-200 bg-white rounded overflow-hidden">
+                                <span class="bg-blue-50 text-blue-600 text-xs px-2 py-1 border-r border-blue-200 w-10 text-center">Re</span>
+                                <input type="number" value="-1" class="w-full px-2 py-1 focus:outline-none text-right text-blue-900">
+                            </div>
+                            <div class="flex items-center border border-blue-200 bg-white rounded overflow-hidden relative">
+                                <span class="bg-blue-50 text-blue-600 text-xs px-2 py-1 border-r border-blue-200 w-10 text-center">±Im</span>
+                                <input type="number" value="9.95" class="w-full px-2 py-1 focus:outline-none text-right text-blue-900">
+                            </div>
+                            <div class="flex items-center border border-blue-200 bg-white rounded overflow-hidden">
+                                <span class="bg-blue-50 text-blue-600 text-xs px-2 py-1 border-r border-blue-200 w-10 text-center">w0</span>
+                                <input type="number" value="10" class="w-full px-2 py-1 focus:outline-none text-right text-blue-900">
+                            </div>
+                            <div class="flex items-center border border-blue-200 bg-white rounded overflow-hidden">
+                                <span class="bg-blue-50 text-blue-600 text-xs px-2 py-1 border-r border-blue-200 w-10 text-center">Q</span>
+                                <input type="number" value="5" class="w-full px-2 py-1 focus:outline-none text-right text-blue-900">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 极点列表 -->
+            <div class="p-4 mb-8 shrink-0">
+                <div class="flex justify-between items-center mb-3">
+                    <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                        <div class="w-3 h-3 flex items-center justify-center text-red-500 font-bold text-lg leading-none mt-[-2px]">×</div>
+                        极点 (Poles)
+                    </h2>
+                    <button class="text-xs bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 px-2 py-1 rounded flex items-center gap-1 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3 h-3"><path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" /></svg>
+                        添加
+                    </button>
+                </div>
+                
+                <div class="space-y-2">
+                    <!-- 极点项 1 (实数) -->
+                    <div class="bg-white border border-slate-200 rounded p-2 text-sm hover:border-red-300 transition-colors cursor-pointer group">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-xs font-medium text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded">P1 (实)</span>
+                            <div class="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button class="text-[10px] text-slate-500 hover:text-slate-800 border border-slate-300 rounded px-1.5 py-0.5 transition-colors">转共轭</button>
+                                <button class="text-slate-400 hover:text-red-500 transition-colors">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path fill-rule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.808a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clip-rule="evenodd" /></svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div class="flex items-center border border-slate-200 rounded overflow-hidden">
+                                <span class="bg-slate-50 text-slate-500 text-xs px-2 py-1 border-r border-slate-200 w-10 text-center">Re</span>
+                                <input type="number" value="-5" class="w-full px-2 py-1 focus:outline-none text-right">
+                            </div>
+                            <div class="flex items-center border border-slate-200 rounded overflow-hidden bg-slate-50">
+                                <span class="text-slate-400 text-xs px-2 py-1 border-r border-slate-200 w-10 text-center">Im</span>
+                                <input type="number" value="0" disabled class="w-full px-2 py-1 bg-transparent focus:outline-none text-right text-slate-400">
+                            </div>
+                            <div class="flex items-center border border-slate-200 rounded overflow-hidden">
+                                <span class="bg-slate-50 text-slate-500 text-xs px-2 py-1 border-r border-slate-200 w-10 text-center">w0</span>
+                                <input type="number" value="5" class="w-full px-2 py-1 focus:outline-none text-right">
+                            </div>
+                            <div class="flex items-center border border-slate-200 rounded overflow-hidden bg-slate-50">
+                                <span class="text-slate-400 text-xs px-2 py-1 border-r border-slate-200 w-10 text-center">Q</span>
+                                <input type="text" value="-" disabled class="w-full px-2 py-1 bg-transparent focus:outline-none text-right text-slate-400">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+        </aside>
+
+    </div>
+
+</body>
+</html>
