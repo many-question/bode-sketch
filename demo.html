@@ -147,7 +147,7 @@
             <section class="p-4 border-b border-slate-200 bg-slate-50 shrink-0">
                 <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">传递函数 H(s)</h2>
                 <div class="bg-white border border-slate-200 rounded p-3 overflow-x-auto shadow-inner">
-                    <div id="hsExpression" class="text-sm font-serif leading-7 min-w-max"></div>
+                    <div id="hsExpression" class="text-sm font-mono leading-7 min-w-max tabular-nums"></div>
                 </div>
                 <p id="systemNotice" class="mt-2 text-xs text-slate-500"></p>
             </section>
@@ -155,7 +155,13 @@
             <section class="p-4 border-b border-slate-200 shrink-0">
                 <div class="flex justify-between items-center mb-3">
                     <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wider">零极点图 (PZ Map)</h2>
-                    <div id="selectedToolbar" class="hidden flex items-center gap-2 text-xs"></div>
+                    <div class="flex items-center gap-3 text-xs">
+                        <label class="flex items-center gap-1 text-slate-500 cursor-pointer">
+                            <input id="pzLogScale" type="checkbox" class="rounded border-slate-300 text-blue-600 focus:ring-blue-500" checked>
+                            对数坐标
+                        </label>
+                        <div id="selectedToolbar" class="hidden flex items-center gap-2"></div>
+                    </div>
                 </div>
                 <div class="aspect-square w-full max-w-[340px] mx-auto relative border border-slate-200 bg-slate-50 rounded-md overflow-hidden">
                     <svg id="pzMap" class="tap-target absolute inset-0 w-full h-full" viewBox="0 0 340 340"></svg>
@@ -217,6 +223,7 @@
             poles: [],
             selected: null,
             mode: "exact",
+            pzLogScale: true,
             wRef: 1,
             gRef: 20,
             gainUnit: "db",
@@ -228,6 +235,7 @@
                 stepTMin: 0, stepTMax: 10, stepYMin: -1, stepYMax: 1
             },
             drag: null,
+            pzDragMapper: null,
             nextId: 1
         };
 
@@ -249,6 +257,7 @@
             ];
             state.selected = { kind: "zero", id: state.zeros[1].id };
             state.mode = "exact";
+            state.pzLogScale = true;
             state.wRef = 1;
             state.gRef = 20;
             state.gainUnit = "db";
@@ -359,31 +368,49 @@
             return Number(x.toFixed(digits)).toString();
         }
 
+        function sTerm(power = "", kind = null) {
+            const colorClass = kind === "zero" ? "text-green-600" : kind === "pole" ? "text-red-500" : "";
+            return `<span class="${colorClass} font-semibold">s${power}</span>`;
+        }
+
         function signedTerm(coef, suffix = "") {
             if (Math.abs(coef) < EPS) return "";
             const abs = fmt(Math.abs(coef), 3);
             return `${coef >= 0 ? " + " : " - "}${abs}${suffix}`;
         }
 
-        function realFactor(entry) {
-            return `(s${signedTerm(-entry.re)})`;
+        function signedSTerm(coef, kind = null) {
+            if (Math.abs(coef) < EPS) return "";
+            const abs = fmt(Math.abs(coef), 3);
+            return `${coef >= 0 ? " + " : " - "}${abs}${sTerm("", kind)}`;
         }
 
-        function pairFactor(entry) {
+        function factorClass(kind, entry) {
+            const selected = state.selected && state.selected.kind === kind && state.selected.id === entry.id;
+            return selected ? "text-blue-600 font-semibold" : "text-slate-950";
+        }
+
+        function realFactor(kind, entry) {
+            const selected = state.selected && state.selected.kind === kind && state.selected.id === entry.id;
+            return `<span class="${factorClass(kind, entry)}">(${sTerm("", selected ? null : kind)}${signedTerm(-entry.re)})</span>`;
+        }
+
+        function pairFactor(kind, entry) {
             const a = -2 * entry.re;
             const b = entry.re * entry.re + entry.im * entry.im;
-            return `(s²${signedTerm(a, "s")}${signedTerm(b)})`;
+            const selected = state.selected && state.selected.kind === kind && state.selected.id === entry.id;
+            const termKind = selected ? null : kind;
+            return `<span class="${factorClass(kind, entry)}">(${sTerm("²", termKind)}${signedSTerm(a, termKind)}${signedTerm(b)})</span>`;
         }
 
         function expressionHtml() {
             const k = fmt(gainK(), 5);
-            const num = state.zeros.map((entry) => entry.im > EPS ? pairFactor(entry) : realFactor(entry));
-            const den = state.poles.map((entry) => entry.im > EPS ? pairFactor(entry) : realFactor(entry));
+            const num = state.zeros.map((entry) => entry.im > EPS ? pairFactor("zero", entry) : realFactor("zero", entry));
+            const den = state.poles.map((entry) => entry.im > EPS ? pairFactor("pole", entry) : realFactor("pole", entry));
             const numerator = [`${k}`, ...num].join(" × ");
             const denominator = den.length ? den.join(" × ") : "1";
             return `
                 <div class="inline-block text-center">
-                    <div class="text-left mb-1 text-slate-500">H(s) =</div>
                     <div class="border-b border-slate-500 px-2 pb-1">${numerator || k}</div>
                     <div class="px-2 pt-1">${denominator}</div>
                 </div>`;
@@ -778,29 +805,269 @@
                 </label>`;
         }
 
-        function pzRange() {
-            const values = [...state.zeros, ...state.poles].flatMap((e) => [Math.abs(e.re), Math.abs(e.im)]);
-            return Math.max(1, Math.max(...values, 1) * 1.35);
+        function pzLog(value) {
+            if (Math.abs(value) < EPS) return 0;
+            return Math.sign(value) * Math.log10(1 + Math.abs(value));
+        }
+
+        function pzInvLog(value) {
+            if (Math.abs(value) < EPS) return 0;
+            return Math.sign(value) * (Math.pow(10, Math.abs(value)) - 1);
+        }
+
+        function pzMaxMagnitude() {
+            const magnitudes = [...state.zeros, ...state.poles].flatMap((entry) => [
+                Math.abs(entry.re),
+                Math.abs(entry.im),
+                characteristicFrequency(entry)
+            ]).filter((value) => Number.isFinite(value) && value > EPS);
+            return magnitudes.length ? Math.max(...magnitudes) : 1;
+        }
+
+        function pzMinMagnitude() {
+            const magnitudes = [...state.zeros, ...state.poles].flatMap((entry) => [
+                Math.abs(entry.re),
+                Math.abs(entry.im),
+                characteristicFrequency(entry)
+            ]).filter((value) => Number.isFinite(value) && value > EPS);
+            return magnitudes.length ? Math.max(Math.min(...magnitudes), EPS) : 1;
+        }
+
+        function pzAxisConfig() {
+            const maxMagnitude = pzMaxMagnitude();
+            if (!state.pzLogScale) {
+                const labelPower = Math.floor(Math.log10(maxMagnitude));
+                const scale = Math.pow(10, labelPower);
+                const normalizedMax = maxMagnitude / scale;
+                const normalizedLimit = Math.max(0.5, Math.ceil(normalizedMax));
+                const tickStep = normalizedLimit < 5 ? 0.5 : 1;
+                const ticks = [];
+                for (let value = tickStep; value <= normalizedLimit + EPS; value += tickStep) {
+                    ticks.push(value * scale);
+                }
+                return {
+                    scale: "linear",
+                    ticks,
+                    labelPower,
+                    units: normalizedLimit * scale
+                };
+            }
+            const minMagnitude = pzMinMagnitude();
+            let minExponent = Math.floor(Math.log10(minMagnitude));
+            let maxExponent = Math.ceil(Math.log10(maxMagnitude));
+            if (maxExponent === minExponent) {
+                minExponent -= 2;
+                maxExponent += 2;
+            }
+            const ticks = Array.from({ length: 5 }, (_, index) => {
+                const exponent = minExponent + (maxExponent - minExponent) * index / 4;
+                return Math.pow(10, exponent);
+            });
+            const maxPower = ticks[ticks.length - 1];
+            return {
+                scale: "log",
+                maxPower,
+                ticks,
+                units: pzLog(maxPower) * 1.12
+            };
+        }
+
+        function pzMapper() {
+            const size = 340;
+            const center = size / 2;
+            const half = size * 0.42;
+            const config = pzAxisConfig();
+            const toUnit = (value) => config.scale === "log" ? pzLog(value) : value;
+            const fromUnit = (value) => config.scale === "log" ? pzInvLog(value) : value;
+            const toScreen = (value) => toUnit(value) / config.units * half;
+            const fromScreen = (value) => fromUnit(value / half * config.units);
+            return {
+                size,
+                center,
+                half,
+                config,
+                xFn: (x) => center + toScreen(x),
+                yFn: (y) => center - toScreen(y),
+                reFromX: (x) => fromScreen(x - center),
+                imFromY: (y) => fromScreen(center - y)
+            };
         }
 
         function renderPzMap() {
             const svg = $("pzMap");
             svg.innerHTML = "";
-            const size = 340;
-            const range = pzRange();
-            const xFn = (x) => size / 2 + x / range * (size * 0.42);
-            const yFn = (y) => size / 2 - y / range * (size * 0.42);
+            const mapper = state.pzDragMapper || pzMapper();
+            const { size, center } = mapper;
             svg.appendChild(svgEl("rect", { x: 0, y: 0, width: size / 2, height: size, fill: "#dbeafe", opacity: 0.25 }));
-            svg.appendChild(svgEl("line", { x1: size / 2, x2: size / 2, y1: 0, y2: size, stroke: "#94a3b8" }));
-            svg.appendChild(svgEl("line", { x1: 0, x2: size, y1: size / 2, y2: size / 2, stroke: "#94a3b8" }));
-            const reText = svgEl("text", { x: size - 20, y: size / 2 - 8, "font-size": 11, fill: "#64748b" });
-            reText.textContent = "Re";
-            svg.appendChild(reText);
-            const imText = svgEl("text", { x: size / 2 + 8, y: 18, "font-size": 11, fill: "#64748b" });
-            imText.textContent = "Im";
-            svg.appendChild(imText);
-            drawPzEntries(svg, state.zeros, "zero", xFn, yFn);
-            drawPzEntries(svg, state.poles, "pole", xFn, yFn);
+            drawPzGrid(svg, mapper);
+            svg.appendChild(svgEl("line", { x1: center, x2: center, y1: 0, y2: size, stroke: "#94a3b8", "stroke-width": 1.4 }));
+            svg.appendChild(svgEl("line", { x1: 0, x2: size, y1: center, y2: center, stroke: "#94a3b8", "stroke-width": 1.4 }));
+            appendPzAxisLabel(svg, size - 44, center - 8, "Re", mapper.config);
+            appendPzAxisLabel(svg, center + 8, 18, "Im", mapper.config);
+            drawSelectedPzOverlay(svg, mapper);
+            drawPzEntries(svg, state.zeros, "zero", mapper.xFn, mapper.yFn);
+            drawPzEntries(svg, state.poles, "pole", mapper.xFn, mapper.yFn);
+        }
+
+        function drawPzGrid(svg, mapper) {
+            const { size, center, config, xFn, yFn } = mapper;
+            config.ticks.forEach((tick) => {
+                [-1, 1].forEach((sign) => {
+                    const value = sign * tick;
+                    const x = xFn(value);
+                    const y = yFn(value);
+                    svg.appendChild(svgEl("line", { x1: x, x2: x, y1: 0, y2: size, stroke: "#e2e8f0", "stroke-width": 1 }));
+                    svg.appendChild(svgEl("line", { x1: 0, x2: size, y1: y, y2: y, stroke: "#e2e8f0", "stroke-width": 1 }));
+                    svg.appendChild(svgEl("line", { x1: x, x2: x, y1: center - 4, y2: center + 4, stroke: "#64748b", "stroke-width": 1 }));
+                    svg.appendChild(svgEl("line", { x1: center - 4, x2: center + 4, y1: y, y2: y, stroke: "#64748b", "stroke-width": 1 }));
+                    appendPzTickLabel(svg, x, center + 16, tick, sign, "middle", config);
+                    appendPzTickLabel(svg, center + 7, y + 3, tick, sign, "start", config);
+                });
+            });
+        }
+
+        function appendPzTickLabel(svg, x, y, tick, sign, anchor, config) {
+            const text = svgEl("text", {
+                x,
+                y,
+                "font-size": 9,
+                fill: "#64748b",
+                "text-anchor": anchor
+            });
+            if (config.scale !== "log") {
+                const normalized = tick / Math.pow(10, config.labelPower);
+                text.textContent = fmt(sign * normalized, 3);
+                svg.appendChild(text);
+                return;
+            }
+            const exponent = Math.log10(tick);
+            const exponentText = Math.abs(exponent - Math.round(exponent)) < 1e-6
+                ? Math.round(exponent).toString()
+                : fmt(exponent, 2);
+            if (sign < 0) {
+                const minus = svgEl("tspan");
+                minus.textContent = "-";
+                text.appendChild(minus);
+            }
+            if (exponent === 0) {
+                const one = svgEl("tspan");
+                one.textContent = "1";
+                text.appendChild(one);
+            } else {
+                const base = svgEl("tspan");
+                base.textContent = "10";
+                text.appendChild(base);
+                if (Math.abs(exponent - 1) > 1e-6) {
+                    const exp = svgEl("tspan", { "baseline-shift": "super", "font-size": 7 });
+                    exp.textContent = exponentText;
+                    text.appendChild(exp);
+                }
+            }
+            svg.appendChild(text);
+        }
+
+        function appendPzAxisLabel(svg, x, y, axisName, config) {
+            const text = svgEl("text", { x, y, "font-size": 11, fill: "#64748b" });
+            const axis = svgEl("tspan");
+            axis.textContent = axisName;
+            text.appendChild(axis);
+            if (config.scale === "linear") {
+                const multiplier = svgEl("tspan");
+                multiplier.textContent = " ×10";
+                text.appendChild(multiplier);
+                const exponent = svgEl("tspan", { "baseline-shift": "super", "font-size": 8 });
+                exponent.textContent = config.labelPower;
+                text.appendChild(exponent);
+            }
+            svg.appendChild(text);
+        }
+
+        function pzPointPath(points, mapper) {
+            return points.map((point, index) => {
+                const x = mapper.xFn(point.re);
+                const y = mapper.yFn(point.im);
+                return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
+            }).join(" ");
+        }
+
+        function drawSelectedPzOverlay(svg, mapper) {
+            const entry = selectedEntry();
+            if (!entry) return;
+            const { center, config, xFn, yFn } = mapper;
+            const w0 = characteristicFrequency(entry);
+            const radius = Math.abs(yFn(w0) - center);
+            const side = entry.re >= 0 ? 1 : -1;
+            const arcPath = config.scale === "log"
+                ? sampledPzCirclePath(w0, side, mapper)
+                : linearPzCirclePath(center, radius, side);
+            const arc = svgEl("path", {
+                d: arcPath,
+                fill: "none",
+                stroke: "#2563eb",
+                "stroke-width": 1.5,
+                "stroke-dasharray": "5 4",
+                opacity: 0.75
+            });
+            svg.appendChild(arc);
+            const w0Label = svgEl("text", {
+                x: center + (side >= 0 ? 8 : -8),
+                y: center - radius - 5,
+                "font-size": 10,
+                fill: "#2563eb",
+                "text-anchor": side >= 0 ? "start" : "end"
+            });
+            w0Label.textContent = `w0=${fmt(w0, 3)}`;
+            svg.appendChild(w0Label);
+            if (entry.im <= EPS) return;
+            [entry.im, -entry.im].forEach((im) => {
+                const x = xFn(entry.re);
+                const y = yFn(im);
+                const radialPath = config.scale === "log"
+                    ? sampledPzRadialPath(entry.re, im, mapper)
+                    : `M ${center} ${center} L ${x} ${y}`;
+                svg.appendChild(svgEl("path", {
+                    d: radialPath,
+                    fill: "none",
+                    stroke: "#2563eb",
+                    "stroke-width": 1.2,
+                    opacity: 0.65
+                }));
+                const angle = Math.atan2(im, entry.re) * 180 / Math.PI;
+                const labelX = config.scale === "log" ? xFn(entry.re * 0.55) : center + (x - center) * 0.56;
+                const labelY = config.scale === "log" ? yFn(im * 0.55) : center + (y - center) * 0.56;
+                const label = svgEl("text", {
+                    x: labelX + (entry.re >= 0 ? 4 : -4),
+                    y: labelY + (im >= 0 ? -5 : 11),
+                    "font-size": 10,
+                    fill: "#2563eb",
+                    "text-anchor": entry.re >= 0 ? "start" : "end"
+                });
+                label.textContent = `∠${fmt(angle, 1)}°`;
+                svg.appendChild(label);
+            });
+        }
+
+        function linearPzCirclePath(center, radius, side) {
+            const sweep = side >= 0 ? 1 : 0;
+            return `M ${center} ${center - radius} A ${radius} ${radius} 0 0 ${sweep} ${center} ${center + radius}`;
+        }
+
+        function sampledPzCirclePath(w0, side, mapper) {
+            const start = side >= 0 ? -Math.PI / 2 : Math.PI / 2;
+            const end = side >= 0 ? Math.PI / 2 : 3 * Math.PI / 2;
+            const points = Array.from({ length: 81 }, (_, index) => {
+                const theta = start + (end - start) * index / 80;
+                return { re: w0 * Math.cos(theta), im: w0 * Math.sin(theta) };
+            });
+            return pzPointPath(points, mapper);
+        }
+
+        function sampledPzRadialPath(re, im, mapper) {
+            const points = Array.from({ length: 41 }, (_, index) => {
+                const ratio = index / 40;
+                return { re: re * ratio, im: im * ratio };
+            });
+            return pzPointPath(points, mapper);
         }
 
         function drawPzEntries(svg, entries, kind, xFn, yFn) {
@@ -855,6 +1122,7 @@
             $("wRef").value = fmt(state.wRef, 5);
             $("gRef").value = fmt(state.gRef, 5);
             $("gainUnit").value = state.gainUnit;
+            $("pzLogScale").checked = state.pzLogScale;
             $("modeExact").className = state.mode === "exact"
                 ? "px-3 py-1 text-xs rounded bg-white shadow-sm font-medium text-slate-800"
                 : "px-3 py-1 text-xs rounded font-medium text-slate-500 hover:text-slate-700";
@@ -980,10 +1248,10 @@
             const rect = svg.getBoundingClientRect();
             const x = (evt.clientX - rect.left) / rect.width * 340;
             const y = (evt.clientY - rect.top) / rect.height * 340;
-            const range = pzRange();
+            const mapper = state.pzDragMapper || pzMapper();
             return {
-                re: (x - 170) / (340 * 0.42) * range,
-                im: -(y - 170) / (340 * 0.42) * range
+                re: mapper.reFromX(x),
+                im: mapper.imFromY(y)
             };
         }
 
@@ -992,6 +1260,7 @@
             $("modeExact").addEventListener("click", () => { state.mode = "exact"; render(); });
             $("modeSketch").addEventListener("click", () => { state.mode = "sketch"; render(); });
             $("clearSelectionFromBode").addEventListener("click", () => { state.selected = null; render(); });
+            $("pzLogScale").addEventListener("change", (e) => { state.pzLogScale = e.target.checked; render(); });
             $("addZero").addEventListener("click", () => addEntry("zero"));
             $("addPole").addEventListener("click", () => addEntry("pole"));
             $("wRef").addEventListener("change", (e) => { const v = Number(e.target.value); if (v > 0) state.wRef = v; render(); });
@@ -1079,6 +1348,7 @@
             }
             e.preventDefault();
             state.selected = { kind: marker.dataset.kind, id: marker.dataset.id };
+            state.pzDragMapper = state.pzLogScale ? null : pzMapper();
             state.drag = { kind: marker.dataset.kind, id: marker.dataset.id };
             $("pzMap").setPointerCapture(e.pointerId);
             render();
@@ -1096,7 +1366,10 @@
         }
 
         function pzPointerUp() {
+            const shouldRefreshAxis = !!state.pzDragMapper;
             state.drag = null;
+            state.pzDragMapper = null;
+            if (shouldRefreshAxis) render();
         }
 
         bindEvents();
