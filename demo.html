@@ -6,36 +6,24 @@
     <title>bode-sketch - 传递函数可视化工具</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* 自定义一些滚动条样式 */
-        ::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        input[type=number]::-webkit-inner-spin-button,
+        input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        input[type=number] { appearance: textfield; -moz-appearance: textfield; }
+        .plot-grid {
+            background-image:
+                linear-gradient(to right, #f1f5f9 1px, transparent 1px),
+                linear-gradient(to bottom, #f1f5f9 1px, transparent 1px);
+            background-size: 10% 20%;
         }
-        ::-webkit-scrollbar-track {
-            background: transparent;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #cbd5e1;
-            border-radius: 3px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #94a3b8;
-        }
-        
-        /* 隐藏数值输入框的上下箭头 */
-        input[type=number]::-webkit-inner-spin-button, 
-        input[type=number]::-webkit-outer-spin-button { 
-            -webkit-appearance: none; 
-            margin: 0; 
-        }
-        input[type=number] {
-            -moz-appearance: textfield;
-        }
+        .plot-svg text { font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+        .tap-target { touch-action: none; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 h-screen flex flex-col overflow-hidden font-sans">
-
-    <!-- 顶栏 -->
     <header class="bg-white border-b border-slate-200 h-14 flex items-center px-4 shrink-0 shadow-sm z-10">
         <div class="flex items-center gap-2">
             <div class="w-8 h-8 bg-blue-600 rounded flex items-center justify-center text-white font-bold text-lg">
@@ -45,452 +33,1074 @@
             </div>
             <h1 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-600">bode-sketch</h1>
         </div>
-        <div class="ml-auto flex items-center gap-4 text-sm">
-            <button class="flex items-center gap-1 text-slate-500 hover:text-slate-800 transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" /></svg>
-                帮助
-            </button>
-            <button class="bg-blue-600 text-white px-3 py-1.5 rounded-md hover:bg-blue-700 transition-colors font-medium">
-                导出报告
-            </button>
+        <div class="ml-auto hidden sm:flex items-center gap-4 text-sm">
+            <span id="statusBadge" class="text-xs text-slate-500">连续时间 H(s) 教学可视化</span>
+            <button id="resetExample" class="bg-blue-600 text-white px-3 py-1.5 rounded-md hover:bg-blue-700 transition-colors font-medium">重置示例</button>
         </div>
     </header>
 
-    <!-- 主体内容区 -->
     <div class="flex-1 flex flex-col md:flex-row overflow-hidden">
-        
-        <!-- 左侧：主要图形展示区 -->
         <main class="flex-1 flex flex-col overflow-y-auto bg-slate-100 p-4 gap-4">
-            
-            <!-- 波特图 -->
-            <div class="bg-white border border-slate-200 rounded-lg shadow-sm flex flex-col min-h-[400px] flex-[2]">
-                <div class="px-4 py-3 border-b border-slate-100 flex justify-between items-center shrink-0">
-                    <div class="flex items-center gap-4">
-                        <h3 class="font-medium text-slate-800">波特图 (Bode Plot)</h3>
-                        <!-- 模式切换按钮 -->
+            <section class="bg-white border border-slate-200 rounded-lg shadow-sm flex flex-col min-h-[480px] flex-[2]">
+                <div class="px-4 py-3 border-b border-slate-100 flex flex-col xl:flex-row xl:justify-between gap-3 shrink-0">
+                    <div class="flex flex-wrap items-center gap-4">
+                        <h2 class="font-medium text-slate-800">波特图 (Bode Plot)</h2>
                         <div class="flex bg-slate-100 p-1 rounded-md border border-slate-200">
-                            <button class="px-3 py-1 text-xs rounded bg-white shadow-sm font-medium text-slate-800">精确模式</button>
-                            <button class="px-3 py-1 text-xs rounded text-slate-500 hover:text-slate-700 transition-colors">折线草绘</button>
+                            <button id="modeExact" class="px-3 py-1 text-xs rounded font-medium">精确模式</button>
+                            <button id="modeSketch" class="px-3 py-1 text-xs rounded font-medium">折线草绘</button>
+                        </div>
+                        <div id="contributionHint" class="hidden bg-blue-50 border border-blue-200 text-blue-700 px-3 py-1 rounded-full text-xs font-medium items-center gap-2">
+                            <span id="contributionText"></span>
+                            <button id="clearSelectionFromBode" class="hover:text-blue-900 bg-white rounded-full px-1">×</button>
                         </div>
                     </div>
-                    
-                    <div class="flex items-center gap-4">
-                        <div class="flex items-center gap-3">
-                            <div class="flex items-center gap-1 text-xs">
-                                <div class="w-3 h-0.5 bg-blue-600"></div> <span class="text-slate-500">幅度</span>
-                            </div>
-                            <div class="flex items-center gap-1 text-xs">
-                                <div class="w-3 h-0.5 bg-orange-500"></div> <span class="text-slate-500">相位</span>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                        <div>
+                            <label class="flex justify-between items-center gap-2 text-slate-700 font-medium">
+                                <span>频率 rad/s</span>
+                                <span class="font-normal text-slate-500"><input id="autoFreq" type="checkbox" class="align-middle" checked> 自动</span>
+                            </label>
+                            <div class="flex items-center gap-1 mt-1">
+                                <input id="wMin" type="number" step="any" class="range-input w-20 border border-slate-200 rounded px-2 py-1">
+                                <span class="text-slate-400">至</span>
+                                <input id="wMax" type="number" step="any" class="range-input w-20 border border-slate-200 rounded px-2 py-1">
                             </div>
                         </div>
-
-                        <!-- 波特图设置弹出菜单 (此处模拟打开状态) -->
-                        <div class="relative">
-                            <button class="p-1.5 text-slate-600 bg-slate-100 border border-slate-200 rounded hover:bg-slate-200 transition-colors shadow-inner flex items-center justify-center">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 011.45.12l.773.774c.39.389.44 1.002.12 1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.397.505.71.93.78l.893.15c.543.09.94.56.94 1.109v1.094c0 .55-.397 1.02-.94 1.11l-.893.149c-.425.07-.765.383-.93.78-.165.398-.143.854.107 1.204l.527.738a1.125 1.125 0 01-.12 1.45l-.774.773a1.125 1.125 0 01-1.449.12l-.738-.527c-.35-.25-.806-.272-1.203-.107-.397.165-.71-.505-.781-.929l-.149.894c-.09.542-.56.94-1.11.94h-1.094c-.55 0-1.019-.398-1.11-.94l-.148-.894c-.071-.424-.384-.764-.781-.93-.398-.164-.854-.142-1.204.108l-.738.527c-.389.39-1.002.44-1.45.12l-.773-.774a1.125 1.125 0 01-.12-1.45l.527-.737c.25-.35.273-.806.108-1.204-.165-.397-.505-.71-.93-.78l-.894-.15c-.542-.09-.94-.56-.94-1.109v-1.094c0-.55.398-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.107-1.204l-.527-.738a1.125 1.125 0 01.12-1.45l.773-.773a1.125 1.125 0 011.45-.12l.737.527c.35.25.807.272 1.204.107.397-.165.71-.505.78-.929l.15-.894z" />
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                </svg>
-                            </button>
-                            
-                            <!-- 弹出面板 -->
-                            <div class="absolute right-0 top-full mt-2 w-64 bg-white border border-slate-200 rounded-lg shadow-xl z-20 p-3">
-                                <h4 class="text-xs font-semibold text-slate-500 mb-3 border-b border-slate-100 pb-2">波特图范围设置</h4>
-                                <div class="space-y-4">
-                                    <div>
-                                        <div class="flex justify-between items-center mb-1.5">
-                                            <label class="text-xs text-slate-700 font-medium">频率 (rad/s)</label>
-                                            <label class="flex items-center gap-1 text-xs text-slate-500 cursor-pointer">
-                                                <input type="checkbox" checked class="rounded border-slate-300 text-blue-600 focus:ring-blue-500">
-                                                自动
-                                            </label>
-                                        </div>
-                                        <div class="flex items-center gap-2 opacity-50">
-                                            <input type="number" value="0.1" disabled class="w-full border border-slate-200 bg-slate-50 rounded px-2 py-1 text-xs">
-                                            <span class="text-xs text-slate-400">至</span>
-                                            <input type="number" value="1000" disabled class="w-full border border-slate-200 bg-slate-50 rounded px-2 py-1 text-xs">
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <div class="flex justify-between items-center mb-1.5">
-                                            <label class="text-xs text-slate-700 font-medium">幅度 (dB)</label>
-                                            <label class="flex items-center gap-1 text-xs text-slate-500 cursor-pointer">
-                                                <input type="checkbox" checked class="rounded border-slate-300 text-blue-600 focus:ring-blue-500">
-                                                自动
-                                            </label>
-                                        </div>
-                                        <div class="flex items-center gap-2 opacity-50">
-                                            <input type="number" value="-60" disabled class="w-full border border-slate-200 bg-slate-50 rounded px-2 py-1 text-xs">
-                                            <span class="text-xs text-slate-400">至</span>
-                                            <input type="number" value="40" disabled class="w-full border border-slate-200 bg-slate-50 rounded px-2 py-1 text-xs">
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <div class="flex justify-between items-center mb-1.5">
-                                            <label class="text-xs text-slate-700 font-medium">相位 (°)</label>
-                                            <label class="flex items-center gap-1 text-xs text-slate-500 cursor-pointer">
-                                                <input type="checkbox" checked class="rounded border-slate-300 text-blue-600 focus:ring-blue-500">
-                                                自动
-                                            </label>
-                                        </div>
-                                        <div class="flex items-center gap-2 opacity-50">
-                                            <input type="number" value="-180" disabled class="w-full border border-slate-200 bg-slate-50 rounded px-2 py-1 text-xs">
-                                            <span class="text-xs text-slate-400">至</span>
-                                            <input type="number" value="180" disabled class="w-full border border-slate-200 bg-slate-50 rounded px-2 py-1 text-xs">
-                                        </div>
-                                    </div>
-                                </div>
+                        <div>
+                            <label class="flex justify-between items-center gap-2 text-slate-700 font-medium">
+                                <span>幅度 dB</span>
+                                <span class="font-normal text-slate-500"><input id="autoMag" type="checkbox" class="align-middle" checked> 自动</span>
+                            </label>
+                            <div class="flex items-center gap-1 mt-1">
+                                <input id="magMin" type="number" step="any" class="range-input w-20 border border-slate-200 rounded px-2 py-1">
+                                <span class="text-slate-400">至</span>
+                                <input id="magMax" type="number" step="any" class="range-input w-20 border border-slate-200 rounded px-2 py-1">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="flex justify-between items-center gap-2 text-slate-700 font-medium">
+                                <span>相位 °</span>
+                                <span class="font-normal text-slate-500"><input id="autoPhase" type="checkbox" class="align-middle" checked> 自动</span>
+                            </label>
+                            <div class="flex items-center gap-1 mt-1">
+                                <input id="phaseMin" type="number" step="any" class="range-input w-20 border border-slate-200 rounded px-2 py-1">
+                                <span class="text-slate-400">至</span>
+                                <input id="phaseMax" type="number" step="any" class="range-input w-20 border border-slate-200 rounded px-2 py-1">
                             </div>
                         </div>
                     </div>
                 </div>
-                
-                <!-- 波特图绘制区域 -->
-                <div class="flex-1 p-4 flex flex-col gap-2 relative">
-                    <!-- 贡献高亮提示 (当选中零极点时显示) -->
-                    <div class="absolute top-6 left-1/2 -translate-x-1/2 bg-blue-50 border border-blue-200 text-blue-700 px-3 py-1 rounded-full text-xs font-medium z-10 shadow-sm flex items-center gap-2">
-                        展示选中对象贡献 (Z2, Z3)
-                        <button class="hover:text-blue-900 bg-white rounded-full p-0.5">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3 h-3"><path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" /></svg>
-                        </button>
+                <div class="flex-1 p-4 flex flex-col gap-3">
+                    <div class="flex-1 min-h-[180px] relative border border-slate-200 rounded bg-white plot-grid">
+                        <svg id="magPlot" class="plot-svg absolute inset-0 w-full h-full" viewBox="0 0 800 240" preserveAspectRatio="none"></svg>
                     </div>
-
-                    <!-- 幅频响应占位 -->
-                    <div class="flex-1 relative border-l border-b border-slate-300 ml-6">
-                        <!-- 网格线 -->
-                        <div class="absolute inset-0 bg-[linear-gradient(to_right,#f1f5f9_1px,transparent_1px),linear-gradient(to_bottom,#f1f5f9_1px,transparent_1px)] bg-[size:10%_20%]"></div>
-                        
-                        <!-- 完整响应 (半透明) -->
-                        <svg class="absolute inset-0 w-full h-full" preserveAspectRatio="none">
-                            <path d="M 0,20 Q 20,20 40,25 T 100,50 T 200,90 T 300,120 T 400,160 T 500,180" fill="none" stroke="#94a3b8" stroke-width="2" class="opacity-40" />
-                        </svg>
-                        
-                        <!-- 选中对象贡献 (高亮) -->
-                        <svg class="absolute inset-0 w-full h-full" preserveAspectRatio="none">
-                            <path d="M 0,50 L 150,50 Q 180,50 200,30 Q 220,50 300,120 L 500,180" fill="none" stroke="#2563eb" stroke-width="3" />
-                        </svg>
-                        
-                        <!-- Y轴刻度 -->
-                        <div class="absolute left-[-24px] top-0 bottom-0 flex flex-col justify-between text-[10px] text-slate-500">
-                            <span>40</span>
-                            <span>0</span>
-                            <span>-40</span>
-                        </div>
-                    </div>
-
-                    <!-- 相频响应占位 -->
-                    <div class="flex-1 relative border-l border-b border-slate-300 ml-6 mb-4">
-                         <!-- 网格线 -->
-                         <div class="absolute inset-0 bg-[linear-gradient(to_right,#f1f5f9_1px,transparent_1px),linear-gradient(to_bottom,#f1f5f9_1px,transparent_1px)] bg-[size:10%_25%]"></div>
-                         
-                         <!-- 完整响应 (半透明) -->
-                         <svg class="absolute inset-0 w-full h-full" preserveAspectRatio="none">
-                             <path d="M 0,20 C 50,20 80,80 120,90 S 200,120 300,160 S 450,160 500,160" fill="none" stroke="#cbd5e1" stroke-width="2" class="opacity-40" />
-                         </svg>
-                         
-                         <!-- 选中对象贡献 (高亮) -->
-                         <svg class="absolute inset-0 w-full h-full" preserveAspectRatio="none">
-                             <path d="M 0,50 L 120,50 C 180,50 180,140 240,140 L 500,140" fill="none" stroke="#ea580c" stroke-width="3" stroke-dasharray="4" />
-                         </svg>
-
-                         <!-- Y轴刻度 -->
-                        <div class="absolute left-[-24px] top-0 bottom-0 flex flex-col justify-between text-[10px] text-slate-500">
-                            <span>180</span>
-                            <span>0</span>
-                            <span>-180</span>
-                        </div>
-                         
-                         <!-- X轴刻度 (Log) -->
-                        <div class="absolute bottom-[-20px] left-0 right-0 flex justify-between text-[10px] text-slate-500 px-2">
-                            <span>0.1</span>
-                            <span>1</span>
-                            <span>10</span>
-                            <span>100</span>
-                            <span>1000</span>
-                        </div>
+                    <div class="flex-1 min-h-[180px] relative border border-slate-200 rounded bg-white plot-grid">
+                        <svg id="phasePlot" class="plot-svg absolute inset-0 w-full h-full" viewBox="0 0 800 240" preserveAspectRatio="none"></svg>
                     </div>
                 </div>
+            </section>
+
+            <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                <section class="bg-white border border-slate-200 rounded-lg shadow-sm flex flex-col min-h-[300px]">
+                    <div class="px-4 py-2 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                        <h2 class="font-medium text-slate-800 text-sm">冲激响应 (Impulse Response)</h2>
+                        <div class="flex flex-wrap items-center gap-2 text-xs">
+                            <label class="text-slate-500"><input id="autoTimeImpulse" type="checkbox" checked> 自动</label>
+                            <input id="impulseTMin" type="number" step="any" class="time-input w-16 border border-slate-200 rounded px-2 py-1">
+                            <span class="text-slate-400">至</span>
+                            <input id="impulseTMax" type="number" step="any" class="time-input w-16 border border-slate-200 rounded px-2 py-1">
+                            <input id="impulseYMin" type="number" step="any" class="time-input w-16 border border-slate-200 rounded px-2 py-1">
+                            <span class="text-slate-400">至</span>
+                            <input id="impulseYMax" type="number" step="any" class="time-input w-16 border border-slate-200 rounded px-2 py-1">
+                        </div>
+                    </div>
+                    <div class="flex-1 p-4">
+                        <div class="h-full min-h-[220px] relative border border-slate-200 rounded bg-white plot-grid">
+                            <svg id="impulsePlot" class="plot-svg absolute inset-0 w-full h-full" viewBox="0 0 700 260" preserveAspectRatio="none"></svg>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="bg-white border border-slate-200 rounded-lg shadow-sm flex flex-col min-h-[300px]">
+                    <div class="px-4 py-2 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                        <h2 class="font-medium text-slate-800 text-sm">阶跃响应 (Step Response)</h2>
+                        <div class="flex flex-wrap items-center gap-2 text-xs">
+                            <label class="text-slate-500"><input id="autoTimeStep" type="checkbox" checked> 自动</label>
+                            <input id="stepTMin" type="number" step="any" class="time-input w-16 border border-slate-200 rounded px-2 py-1">
+                            <span class="text-slate-400">至</span>
+                            <input id="stepTMax" type="number" step="any" class="time-input w-16 border border-slate-200 rounded px-2 py-1">
+                            <input id="stepYMin" type="number" step="any" class="time-input w-16 border border-slate-200 rounded px-2 py-1">
+                            <span class="text-slate-400">至</span>
+                            <input id="stepYMax" type="number" step="any" class="time-input w-16 border border-slate-200 rounded px-2 py-1">
+                        </div>
+                    </div>
+                    <div class="flex-1 p-4">
+                        <div class="h-full min-h-[220px] relative border border-slate-200 rounded bg-white plot-grid">
+                            <svg id="stepPlot" class="plot-svg absolute inset-0 w-full h-full" viewBox="0 0 700 260" preserveAspectRatio="none"></svg>
+                        </div>
+                    </div>
+                </section>
             </div>
-
-            <!-- 冲激响应 -->
-            <div class="bg-white border border-slate-200 rounded-lg shadow-sm flex flex-col min-h-[250px] flex-1">
-                <div class="px-4 py-2 border-b border-slate-100 flex justify-between items-center relative">
-                    <h3 class="font-medium text-slate-800 text-sm">冲激响应 (Impulse Response)</h3>
-                    
-                    <!-- 设置按钮 (未打开状态) -->
-                    <button class="p-1 text-slate-400 hover:text-slate-600 rounded hover:bg-slate-100 transition-colors">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 011.45.12l.773.774c.39.389.44 1.002.12 1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.397.505.71.93.78l.893.15c.543.09.94.56.94 1.109v1.094c0 .55-.397 1.02-.94 1.11l-.893.149c-.425.07-.765.383-.93.78-.165.398-.143.854.107 1.204l.527.738a1.125 1.125 0 01-.12 1.45l-.774.773a1.125 1.125 0 01-1.449.12l-.738-.527c-.35-.25-.806-.272-1.203-.107-.397.165-.71-.505-.781-.929l-.149.894c-.09.542-.56.94-1.11.94h-1.094c-.55 0-1.019-.398-1.11-.94l-.148-.894c-.071-.424-.384-.764-.781-.93-.398-.164-.854-.142-1.204.108l-.738.527c-.389.39-1.002.44-1.45.12l-.773-.774a1.125 1.125 0 01-.12-1.45l.527-.737c.25-.35.273-.806.108-1.204-.165-.397-.505-.71-.93-.78l-.894-.15c-.542-.09-.94-.56-.94-1.109v-1.094c0-.55.398-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.107-1.204l-.527-.738a1.125 1.125 0 01.12-1.45l.773-.773a1.125 1.125 0 011.45-.12l.737.527c.35.25.807.272 1.204.107.397-.165.71-.505.78-.929l.15-.894z" />
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
-                    </button>
-                </div>
-                <div class="flex-1 p-4 relative">
-                    <div class="absolute inset-4 border-l border-b border-slate-300 ml-6 mb-6">
-                        <!-- 占位波形 -->
-                        <svg class="absolute inset-0 w-full h-full" preserveAspectRatio="none" viewBox="0 0 100 100">
-                            <path d="M 0,50 L 1,10 Q 5,60 10,40 T 20,55 T 30,48 T 45,51 T 60,50 L 100,50" fill="none" stroke="#10b981" stroke-width="1.5" />
-                            <!-- 0刻度线 -->
-                            <line x1="0" y1="50" x2="100" y2="50" stroke="#cbd5e1" stroke-width="0.5" stroke-dasharray="2" />
-                        </svg>
-                        
-                        <div class="absolute left-[-24px] top-0 bottom-0 flex flex-col justify-between text-[10px] text-slate-500">
-                            <span>1</span>
-                            <span>0</span>
-                            <span>-1</span>
-                        </div>
-                        <div class="absolute bottom-[-20px] right-0 text-[10px] text-slate-500">时间 (s)</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 阶跃响应 -->
-            <div class="bg-white border border-slate-200 rounded-lg shadow-sm flex flex-col min-h-[250px] flex-1 mb-8">
-                <div class="px-4 py-2 border-b border-slate-100 flex justify-between items-center relative">
-                    <h3 class="font-medium text-slate-800 text-sm">阶跃响应 (Step Response)</h3>
-                    
-                    <!-- 设置按钮 (未打开状态) -->
-                    <button class="p-1 text-slate-400 hover:text-slate-600 rounded hover:bg-slate-100 transition-colors">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 011.45.12l.773.774c.39.389.44 1.002.12 1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.397.505.71.93.78l.893.15c.543.09.94.56.94 1.109v1.094c0 .55-.397 1.02-.94 1.11l-.893.149c-.425.07-.765.383-.93.78-.165.398-.143.854.107 1.204l.527.738a1.125 1.125 0 01-.12 1.45l-.774.773a1.125 1.125 0 01-1.449.12l-.738-.527c-.35-.25-.806-.272-1.203-.107-.397.165-.71-.505-.781-.929l-.149.894c-.09.542-.56.94-1.11.94h-1.094c-.55 0-1.019-.398-1.11-.94l-.148-.894c-.071-.424-.384-.764-.781-.93-.398-.164-.854-.142-1.204.108l-.738.527c-.389.39-1.002.44-1.45.12l-.773-.774a1.125 1.125 0 01-.12-1.45l.527-.737c.25-.35.273-.806.108-1.204-.165-.397-.505-.71-.93-.78l-.894-.15c-.542-.09-.94-.56-.94-1.109v-1.094c0-.55.398-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.107-1.204l-.527-.738a1.125 1.125 0 01.12-1.45l.773-.773a1.125 1.125 0 011.45-.12l.737.527c.35.25.807.272 1.204.107.397-.165.71-.505.78-.929l.15-.894z" />
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
-                    </button>
-                </div>
-                <div class="flex-1 p-4 relative">
-                    <div class="absolute inset-4 border-l border-b border-slate-300 ml-6 mb-6">
-                        <!-- 占位波形 -->
-                        <svg class="absolute inset-0 w-full h-full" preserveAspectRatio="none" viewBox="0 0 100 100">
-                            <path d="M 0,90 C 5,90 8,10 15,30 S 25,40 30,35 S 40,38 50,38 L 100,38" fill="none" stroke="#8b5cf6" stroke-width="1.5" />
-                            <!-- 稳态值线 -->
-                            <line x1="0" y1="38" x2="100" y2="38" stroke="#cbd5e1" stroke-width="0.5" stroke-dasharray="2" />
-                        </svg>
-
-                        <div class="absolute left-[-24px] top-0 bottom-0 flex flex-col justify-between text-[10px] text-slate-500">
-                            <span>1</span>
-                            <span>0.5</span>
-                            <span>0</span>
-                        </div>
-                        <div class="absolute bottom-[-20px] right-0 text-[10px] text-slate-500">时间 (s)</div>
-                    </div>
-                </div>
-            </div>
-            
         </main>
 
-        <!-- 右侧：控制与状态区 -->
-        <aside class="w-full md:w-[400px] xl:w-[450px] bg-white border-l border-slate-200 flex flex-col shrink-0 overflow-y-auto">
-            
-            <!-- 传递函数表达式 -->
-            <div class="p-4 border-b border-slate-200 bg-slate-50 shrink-0">
+        <aside class="w-full md:w-[420px] xl:w-[470px] bg-white border-l border-slate-200 flex flex-col shrink-0 overflow-y-auto">
+            <section class="p-4 border-b border-slate-200 bg-slate-50 shrink-0">
                 <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">传递函数 H(s)</h2>
-                <div class="bg-white border border-slate-200 rounded p-3 text-center overflow-x-auto shadow-inner">
-                    <div class="text-sm font-serif">
-                        <div class="border-b border-slate-400 pb-1 mb-1 inline-block px-2">
-                            100 × (s - 10) × (s² + 2s + 100)
-                        </div>
-                        <div class="px-2">
-                            (s + 5) × (s² + 10s + 1000)
-                        </div>
-                    </div>
+                <div class="bg-white border border-slate-200 rounded p-3 overflow-x-auto shadow-inner">
+                    <div id="hsExpression" class="text-sm font-serif leading-7 min-w-max"></div>
                 </div>
-            </div>
+                <p id="systemNotice" class="mt-2 text-xs text-slate-500"></p>
+            </section>
 
-            <!-- 零极点图 -->
-            <div class="p-4 border-b border-slate-200 shrink-0">
+            <section class="p-4 border-b border-slate-200 shrink-0">
                 <div class="flex justify-between items-center mb-3">
                     <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wider">零极点图 (PZ Map)</h2>
-                    <div class="flex items-center gap-2 text-xs">
-                        <span class="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">已选中 Z2, Z3</span>
-                        <button class="text-slate-500 hover:text-slate-800 border border-slate-300 rounded px-2 py-0.5 transition-colors">转实数</button>
-                    </div>
+                    <div id="selectedToolbar" class="hidden flex items-center gap-2 text-xs"></div>
                 </div>
-                
-                <div class="aspect-square w-full max-w-[320px] mx-auto relative border border-slate-200 bg-slate-50 rounded-md overflow-hidden">
-                    <!-- 虚轴 -->
-                    <div class="absolute top-0 bottom-0 left-1/2 w-px bg-slate-400 -translate-x-1/2"></div>
-                    <!-- 实轴 -->
-                    <div class="absolute left-0 right-0 top-1/2 h-px bg-slate-400 -translate-y-1/2"></div>
-                    
-                    <!-- 稳定区域指示 (左半平面) -->
-                    <div class="absolute left-0 top-0 bottom-0 w-1/2 bg-blue-100 opacity-20"></div>
-
-                    <!-- 极点 1 (x) -->
-                    <div class="absolute left-[30%] top-[50%] w-4 h-4 -translate-x-1/2 -translate-y-1/2 text-red-500 font-bold text-xl leading-none flex items-center justify-center select-none cursor-pointer">×</div>
-                    
-                    <!-- 零点 1 (o) -->
-                    <div class="absolute left-[90%] top-[50%] w-3 h-3 -translate-x-1/2 -translate-y-1/2 border-2 border-green-500 rounded-full select-none cursor-pointer"></div>
-
-                    <!-- 零点 2 & 3 (共轭, 选中状态) -->
-                    <div class="absolute left-[45%] top-[20%] w-4 h-4 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center select-none cursor-pointer group z-10">
-                        <div class="absolute w-8 h-8 bg-blue-400 opacity-20 rounded-full scale-100 animate-pulse"></div>
-                        <div class="w-3 h-3 border-2 border-blue-600 bg-white rounded-full relative z-10 shadow-sm shadow-blue-400"></div>
-                    </div>
-                    <div class="absolute left-[45%] top-[80%] w-4 h-4 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center select-none cursor-pointer group z-10">
-                        <div class="absolute w-8 h-8 bg-blue-400 opacity-20 rounded-full scale-100 animate-pulse"></div>
-                        <div class="w-3 h-3 border-2 border-blue-600 bg-white rounded-full relative z-10 shadow-sm shadow-blue-400"></div>
-                    </div>
-                    
-                    <!-- 坐标轴标签 -->
-                    <span class="absolute right-2 top-[50%] -translate-y-full text-[10px] text-slate-500 mt-1">Re</span>
-                    <span class="absolute left-[50%] top-2 translate-x-1 text-[10px] text-slate-500">Im</span>
+                <div class="aspect-square w-full max-w-[340px] mx-auto relative border border-slate-200 bg-slate-50 rounded-md overflow-hidden">
+                    <svg id="pzMap" class="tap-target absolute inset-0 w-full h-full" viewBox="0 0 340 340"></svg>
                 </div>
-            </div>
+                <div id="selectedInfo" class="mt-3 text-xs text-slate-600 min-h-[1.25rem]"></div>
+            </section>
 
-            <!-- 参考增益设置 -->
-            <div class="p-4 border-b border-slate-200 shrink-0">
-                <div class="flex justify-between items-center mb-3">
-                    <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wider">参考频率设置</h2>
-                </div>
+            <section class="p-4 border-b border-slate-200 shrink-0">
+                <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">参考频率设置</h2>
                 <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-xs text-slate-500 mb-1">参考频率 w_ref (rad/s)</label>
-                        <input type="number" value="1.0" class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
-                    </div>
-                    <div>
-                        <label class="block text-xs text-slate-500 mb-1">目标增益 G_ref</label>
+                    <label>
+                        <span class="block text-xs text-slate-500 mb-1">参考频率 w_ref (rad/s)</span>
+                        <input id="wRef" type="number" step="any" class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                    </label>
+                    <label>
+                        <span class="block text-xs text-slate-500 mb-1">目标增益 G_ref</span>
                         <div class="flex">
-                            <input type="number" value="20" class="w-full border border-slate-300 rounded-l px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 z-10">
-                            <select class="border border-l-0 border-slate-300 rounded-r bg-slate-50 px-2 py-1.5 text-sm focus:outline-none">
-                                <option>dB</option>
-                                <option>Linear</option>
+                            <input id="gRef" type="number" step="any" class="w-full border border-slate-300 rounded-l px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 z-10">
+                            <select id="gainUnit" class="border border-l-0 border-slate-300 rounded-r bg-slate-50 px-2 py-1.5 text-sm focus:outline-none">
+                                <option value="db">dB</option>
+                                <option value="linear">Linear</option>
                             </select>
                         </div>
-                    </div>
+                    </label>
                 </div>
-            </div>
+            </section>
 
-            <!-- 零点列表 -->
-            <div class="p-4 border-b border-slate-200 shrink-0">
+            <section class="p-4 border-b border-slate-200 shrink-0">
                 <div class="flex justify-between items-center mb-3">
                     <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                        <div class="w-3 h-3 rounded-full border-2 border-green-500 flex items-center justify-center"></div>
-                        零点 (Zeros)
+                        <span class="w-3 h-3 rounded-full border-2 border-green-500 inline-block"></span>
+                        零点 (Zeros) <span id="zeroCount" class="text-slate-400"></span>
                     </h2>
-                    <button class="text-xs bg-green-50 text-green-600 border border-green-200 hover:bg-green-100 px-2 py-1 rounded flex items-center gap-1 transition-colors">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3 h-3"><path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" /></svg>
-                        添加
-                    </button>
+                    <button id="addZero" class="text-xs bg-green-50 text-green-600 border border-green-200 hover:bg-green-100 px-2 py-1 rounded flex items-center gap-1 transition-colors">添加</button>
                 </div>
-                
-                <div class="space-y-2">
-                    <!-- 零点项 1 (实数) -->
-                    <div class="bg-white border border-slate-200 rounded p-2 text-sm hover:border-green-300 transition-colors cursor-pointer group">
-                        <div class="flex justify-between items-center mb-2">
-                            <span class="text-xs font-medium text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded">Z1 (实)</span>
-                            <div class="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button class="text-[10px] text-slate-500 hover:text-slate-800 border border-slate-300 rounded px-1.5 py-0.5 transition-colors">转共轭</button>
-                                <button class="text-slate-400 hover:text-red-500 transition-colors">
-                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path fill-rule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.808a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clip-rule="evenodd" /></svg>
-                                </button>
-                            </div>
-                        </div>
-                        <div class="grid grid-cols-2 gap-2">
-                            <div class="flex items-center border border-slate-200 rounded overflow-hidden">
-                                <span class="bg-slate-50 text-slate-500 text-xs px-2 py-1 border-r border-slate-200 w-10 text-center">Re</span>
-                                <input type="number" value="10" class="w-full px-2 py-1 focus:outline-none text-right">
-                            </div>
-                            <div class="flex items-center border border-slate-200 rounded overflow-hidden bg-slate-50">
-                                <span class="text-slate-400 text-xs px-2 py-1 border-r border-slate-200 w-10 text-center">Im</span>
-                                <input type="number" value="0" disabled class="w-full px-2 py-1 bg-transparent focus:outline-none text-right text-slate-400">
-                            </div>
-                            <div class="flex items-center border border-slate-200 rounded overflow-hidden">
-                                <span class="bg-slate-50 text-slate-500 text-xs px-2 py-1 border-r border-slate-200 w-10 text-center">w0</span>
-                                <input type="number" value="10" class="w-full px-2 py-1 focus:outline-none text-right">
-                            </div>
-                            <div class="flex items-center border border-slate-200 rounded overflow-hidden bg-slate-50">
-                                <span class="text-slate-400 text-xs px-2 py-1 border-r border-slate-200 w-10 text-center">Q</span>
-                                <input type="text" value="-" disabled class="w-full px-2 py-1 bg-transparent focus:outline-none text-right text-slate-400">
-                            </div>
-                        </div>
-                    </div>
+                <div id="zeroList" class="space-y-2"></div>
+            </section>
 
-                    <!-- 零点项 2 (复共轭，高亮选中状态) -->
-                    <div class="bg-blue-50 border border-blue-400 rounded p-2 text-sm shadow-sm relative">
-                        <!-- 选中指示器 -->
-                        <div class="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 rounded-l"></div>
-                        
-                        <div class="flex justify-between items-center mb-2 pl-1">
-                            <span class="text-xs font-medium text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded">Z2, Z3 (复共轭)</span>
-                            <div class="flex items-center gap-1.5 transition-opacity">
-                                <button class="text-[10px] text-blue-600 hover:text-blue-900 border border-blue-300 rounded px-1.5 py-0.5 transition-colors">转实数</button>
-                                <button class="text-slate-400 hover:text-red-500 transition-colors">
-                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path fill-rule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.808a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clip-rule="evenodd" /></svg>
-                                </button>
-                            </div>
-                        </div>
-                        <div class="grid grid-cols-2 gap-2 pl-1">
-                            <div class="flex items-center border border-blue-200 bg-white rounded overflow-hidden">
-                                <span class="bg-blue-50 text-blue-600 text-xs px-2 py-1 border-r border-blue-200 w-10 text-center">Re</span>
-                                <input type="number" value="-1" class="w-full px-2 py-1 focus:outline-none text-right text-blue-900">
-                            </div>
-                            <div class="flex items-center border border-blue-200 bg-white rounded overflow-hidden relative">
-                                <span class="bg-blue-50 text-blue-600 text-xs px-2 py-1 border-r border-blue-200 w-10 text-center">±Im</span>
-                                <input type="number" value="9.95" class="w-full px-2 py-1 focus:outline-none text-right text-blue-900">
-                            </div>
-                            <div class="flex items-center border border-blue-200 bg-white rounded overflow-hidden">
-                                <span class="bg-blue-50 text-blue-600 text-xs px-2 py-1 border-r border-blue-200 w-10 text-center">w0</span>
-                                <input type="number" value="10" class="w-full px-2 py-1 focus:outline-none text-right text-blue-900">
-                            </div>
-                            <div class="flex items-center border border-blue-200 bg-white rounded overflow-hidden">
-                                <span class="bg-blue-50 text-blue-600 text-xs px-2 py-1 border-r border-blue-200 w-10 text-center">Q</span>
-                                <input type="number" value="5" class="w-full px-2 py-1 focus:outline-none text-right text-blue-900">
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 极点列表 -->
-            <div class="p-4 mb-8 shrink-0">
+            <section class="p-4 mb-8 shrink-0">
                 <div class="flex justify-between items-center mb-3">
                     <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                        <div class="w-3 h-3 flex items-center justify-center text-red-500 font-bold text-lg leading-none mt-[-2px]">×</div>
-                        极点 (Poles)
+                        <span class="w-3 h-3 flex items-center justify-center text-red-500 font-bold text-lg leading-none mt-[-2px]">×</span>
+                        极点 (Poles) <span id="poleCount" class="text-slate-400"></span>
                     </h2>
-                    <button class="text-xs bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 px-2 py-1 rounded flex items-center gap-1 transition-colors">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3 h-3"><path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" /></svg>
-                        添加
-                    </button>
+                    <button id="addPole" class="text-xs bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 px-2 py-1 rounded flex items-center gap-1 transition-colors">添加</button>
                 </div>
-                
-                <div class="space-y-2">
-                    <!-- 极点项 1 (实数) -->
-                    <div class="bg-white border border-slate-200 rounded p-2 text-sm hover:border-red-300 transition-colors cursor-pointer group">
-                        <div class="flex justify-between items-center mb-2">
-                            <span class="text-xs font-medium text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded">P1 (实)</span>
-                            <div class="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button class="text-[10px] text-slate-500 hover:text-slate-800 border border-slate-300 rounded px-1.5 py-0.5 transition-colors">转共轭</button>
-                                <button class="text-slate-400 hover:text-red-500 transition-colors">
-                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path fill-rule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.808a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clip-rule="evenodd" /></svg>
-                                </button>
-                            </div>
-                        </div>
-                        <div class="grid grid-cols-2 gap-2">
-                            <div class="flex items-center border border-slate-200 rounded overflow-hidden">
-                                <span class="bg-slate-50 text-slate-500 text-xs px-2 py-1 border-r border-slate-200 w-10 text-center">Re</span>
-                                <input type="number" value="-5" class="w-full px-2 py-1 focus:outline-none text-right">
-                            </div>
-                            <div class="flex items-center border border-slate-200 rounded overflow-hidden bg-slate-50">
-                                <span class="text-slate-400 text-xs px-2 py-1 border-r border-slate-200 w-10 text-center">Im</span>
-                                <input type="number" value="0" disabled class="w-full px-2 py-1 bg-transparent focus:outline-none text-right text-slate-400">
-                            </div>
-                            <div class="flex items-center border border-slate-200 rounded overflow-hidden">
-                                <span class="bg-slate-50 text-slate-500 text-xs px-2 py-1 border-r border-slate-200 w-10 text-center">w0</span>
-                                <input type="number" value="5" class="w-full px-2 py-1 focus:outline-none text-right">
-                            </div>
-                            <div class="flex items-center border border-slate-200 rounded overflow-hidden bg-slate-50">
-                                <span class="text-slate-400 text-xs px-2 py-1 border-r border-slate-200 w-10 text-center">Q</span>
-                                <input type="text" value="-" disabled class="w-full px-2 py-1 bg-transparent focus:outline-none text-right text-slate-400">
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
+                <div id="poleList" class="space-y-2"></div>
+            </section>
         </aside>
-
     </div>
 
+    <script>
+        "use strict";
+
+        const EPS = 1e-9;
+        const PLOT = { left: 52, right: 18, top: 18, bottom: 36 };
+        const state = {
+            zeros: [],
+            poles: [],
+            selected: null,
+            mode: "exact",
+            wRef: 1,
+            gRef: 20,
+            gainUnit: "db",
+            ranges: {
+                autoFreq: true, autoMag: true, autoPhase: true,
+                wMin: 0.1, wMax: 1000, magMin: -60, magMax: 40, phaseMin: -180, phaseMax: 180,
+                autoTimeImpulse: true, autoTimeStep: true,
+                impulseTMin: 0, impulseTMax: 10, impulseYMin: -1, impulseYMax: 1,
+                stepTMin: 0, stepTMax: 10, stepYMin: -1, stepYMax: 1
+            },
+            drag: null,
+            nextId: 1
+        };
+
+        const $ = (id) => document.getElementById(id);
+
+        function newEntry(kind, re, im) {
+            return { id: `${kind}-${state.nextId++}`, kind, re, im: Math.abs(im || 0) };
+        }
+
+        function resetExample() {
+            state.nextId = 1;
+            state.zeros = [
+                newEntry("zero", 10, 0),
+                newEntry("zero", -1, 9.95)
+            ];
+            state.poles = [
+                newEntry("pole", -5, 0),
+                newEntry("pole", -5, 31.22)
+            ];
+            state.selected = { kind: "zero", id: state.zeros[1].id };
+            state.mode = "exact";
+            state.wRef = 1;
+            state.gRef = 20;
+            state.gainUnit = "db";
+            Object.assign(state.ranges, {
+                autoFreq: true, autoMag: true, autoPhase: true,
+                autoTimeImpulse: true, autoTimeStep: true
+            });
+            render();
+        }
+
+        function c(re, im) { return { re, im }; }
+        function cAdd(a, b) { return c(a.re + b.re, a.im + b.im); }
+        function cSub(a, b) { return c(a.re - b.re, a.im - b.im); }
+        function cMul(a, b) { return c(a.re * b.re - a.im * b.im, a.re * b.im + a.im * b.re); }
+        function cDiv(a, b) {
+            const d = b.re * b.re + b.im * b.im;
+            return d < EPS ? c(NaN, NaN) : c((a.re * b.re + a.im * b.im) / d, (a.im * b.re - a.re * b.im) / d);
+        }
+        function cAbs(a) { return Math.hypot(a.re, a.im); }
+        function cArg(a) { return Math.atan2(a.im, a.re); }
+        function cExp(a) {
+            const e = Math.exp(Math.max(-700, Math.min(700, a.re)));
+            return c(e * Math.cos(a.im), e * Math.sin(a.im));
+        }
+
+        function allRoots(entries) {
+            const roots = [];
+            entries.forEach((entry) => {
+                roots.push(c(entry.re, entry.im));
+                if (entry.im > EPS) roots.push(c(entry.re, -entry.im));
+            });
+            return roots;
+        }
+
+        function factorValue(entry, w) {
+            const s = c(0, w);
+            if (entry.im > EPS) {
+                return cMul(cSub(s, c(entry.re, entry.im)), cSub(s, c(entry.re, -entry.im)));
+            }
+            return cSub(s, c(entry.re, 0));
+        }
+
+        function productValue(entries, w) {
+            return entries.reduce((acc, entry) => cMul(acc, factorValue(entry, w)), c(1, 0));
+        }
+
+        function targetGainLinear() {
+            if (!Number.isFinite(state.gRef)) return 1;
+            return state.gainUnit === "db" ? Math.pow(10, state.gRef / 20) : Math.max(Math.abs(state.gRef), EPS);
+        }
+
+        function gainK() {
+            const w = Math.max(Math.abs(state.wRef), EPS);
+            const num = cAbs(productValue(state.zeros, w));
+            const den = cAbs(productValue(state.poles, w));
+            if (!Number.isFinite(num) || !Number.isFinite(den) || num < EPS) return 1;
+            return targetGainLinear() * den / num;
+        }
+
+        function hAt(w, entriesZeros = state.zeros, entriesPoles = state.poles, k = gainK()) {
+            return cDiv(cMul(c(k, 0), productValue(entriesZeros, w)), productValue(entriesPoles, w));
+        }
+
+        function selectedEntry() {
+            if (!state.selected) return null;
+            const list = state.selected.kind === "zero" ? state.zeros : state.poles;
+            return list.find((entry) => entry.id === state.selected.id) || null;
+        }
+
+        function entryLabel(kind, index, entry) {
+            const prefix = kind === "zero" ? "Z" : "P";
+            const start = 1 + indexEntries(kind).slice(0, index).reduce((sum, item) => sum + (item.im > EPS ? 2 : 1), 0);
+            return entry.im > EPS ? `${prefix}${start}, ${prefix}${start + 1}` : `${prefix}${start}`;
+        }
+
+        function indexEntries(kind) {
+            return kind === "zero" ? state.zeros : state.poles;
+        }
+
+        function characteristicFrequency(entry) {
+            return Math.max(Math.hypot(entry.re, entry.im), EPS);
+        }
+
+        function qOf(entry) {
+            const w0 = characteristicFrequency(entry);
+            if (entry.im <= EPS) return null;
+            if (Math.abs(entry.re) <= EPS) return Infinity;
+            return w0 / (2 * Math.abs(entry.re));
+        }
+
+        function setFromW0Q(entry, w0Raw, qRaw) {
+            const w0 = Number(w0Raw);
+            const q = Number(qRaw);
+            if (!(w0 > 0) || !(q > 0.5)) return false;
+            const sign = entry.re >= 0 ? 1 : -1;
+            const reAbs = w0 / (2 * q);
+            const im = Math.sqrt(Math.max(0, w0 * w0 - reAbs * reAbs));
+            entry.re = sign * reAbs;
+            entry.im = im;
+            return true;
+        }
+
+        function fmt(x, digits = 4) {
+            if (!Number.isFinite(x)) return "∞";
+            if (Math.abs(x) < 1e-10) return "0";
+            const ax = Math.abs(x);
+            if (ax >= 10000 || ax < 0.001) return x.toExponential(2);
+            return Number(x.toFixed(digits)).toString();
+        }
+
+        function signedTerm(coef, suffix = "") {
+            if (Math.abs(coef) < EPS) return "";
+            const abs = fmt(Math.abs(coef), 3);
+            return `${coef >= 0 ? " + " : " - "}${abs}${suffix}`;
+        }
+
+        function realFactor(entry) {
+            return `(s${signedTerm(-entry.re)})`;
+        }
+
+        function pairFactor(entry) {
+            const a = -2 * entry.re;
+            const b = entry.re * entry.re + entry.im * entry.im;
+            return `(s²${signedTerm(a, "s")}${signedTerm(b)})`;
+        }
+
+        function expressionHtml() {
+            const k = fmt(gainK(), 5);
+            const num = state.zeros.map((entry) => entry.im > EPS ? pairFactor(entry) : realFactor(entry));
+            const den = state.poles.map((entry) => entry.im > EPS ? pairFactor(entry) : realFactor(entry));
+            const numerator = [`${k}`, ...num].join(" × ");
+            const denominator = den.length ? den.join(" × ") : "1";
+            return `
+                <div class="inline-block text-center">
+                    <div class="text-left mb-1 text-slate-500">H(s) =</div>
+                    <div class="border-b border-slate-500 px-2 pb-1">${numerator || k}</div>
+                    <div class="px-2 pt-1">${denominator}</div>
+                </div>`;
+        }
+
+        function polyMultiply(a, b) {
+            const out = Array(a.length + b.length - 1).fill(0);
+            for (let i = 0; i < a.length; i++) {
+                for (let j = 0; j < b.length; j++) out[i + j] += a[i] * b[j];
+            }
+            return out;
+        }
+
+        function polyFromEntries(entries) {
+            return entries.reduce((poly, entry) => {
+                if (entry.im > EPS) return polyMultiply(poly, [1, -2 * entry.re, entry.re * entry.re + entry.im * entry.im]);
+                return polyMultiply(poly, [1, -entry.re]);
+            }, [1]);
+        }
+
+        function polyEvalComplex(coeffs, z) {
+            return coeffs.reduce((acc, coeff) => cAdd(cMul(acc, z), c(coeff, 0)), c(0, 0));
+        }
+
+        function polyDerivative(coeffs) {
+            const n = coeffs.length - 1;
+            return coeffs.slice(0, -1).map((coeff, i) => coeff * (n - i));
+        }
+
+        function logspace(min, max, n) {
+            const a = Math.log10(min);
+            const b = Math.log10(max);
+            return Array.from({ length: n }, (_, i) => Math.pow(10, a + (b - a) * i / (n - 1)));
+        }
+
+        function unwrap(phases) {
+            const out = [];
+            let offset = 0;
+            for (let i = 0; i < phases.length; i++) {
+                if (i > 0) {
+                    const delta = phases[i] + offset - out[i - 1];
+                    if (delta > 180) offset -= 360;
+                    if (delta < -180) offset += 360;
+                }
+                out.push(phases[i] + offset);
+            }
+            return out;
+        }
+
+        function bodeExact(freqs) {
+            const k = gainK();
+            const rawPhase = [];
+            const mag = freqs.map((w) => {
+                const h = hAt(w, state.zeros, state.poles, k);
+                rawPhase.push(cArg(h) * 180 / Math.PI);
+                const amp = cAbs(h);
+                return 20 * Math.log10(Math.max(amp, 1e-18));
+            });
+            return { mag, phase: unwrap(rawPhase) };
+        }
+
+        function firstOrderSketchTerm(w, w0, sign, order) {
+            if (w <= w0) return 0;
+            return sign * order * 20 * Math.log10(w / w0);
+        }
+
+        function phaseSketchTerm(w, w0, sign, order) {
+            const lo = w0 / 10;
+            const hi = w0 * 10;
+            if (w <= lo) return 0;
+            if (w >= hi) return sign * order * 90;
+            return sign * order * 45 * (1 + Math.log10(w / w0));
+        }
+
+        function bodeSketch(freqs, exact) {
+            const w0 = freqs[0];
+            const anchor = 20 * Math.log10(Math.max(cAbs(hAt(w0)), 1e-18));
+            const startPhase = cArg(hAt(w0)) * 180 / Math.PI;
+            const mag = [];
+            const phase = [];
+            freqs.forEach((w, i) => {
+                let m = anchor;
+                let p = startPhase;
+                state.zeros.forEach((entry) => {
+                    const wc = characteristicFrequency(entry);
+                    const order = entry.im > EPS ? 2 : 1;
+                    m += firstOrderSketchTerm(w, wc, 1, order);
+                    p += phaseSketchTerm(w, wc, 1, order);
+                    if (entry.im > EPS) {
+                        const q = qOf(entry);
+                        if (Number.isFinite(q) && q > 0.7) {
+                            const bell = Math.exp(-Math.pow(Math.log10(w / wc) / 0.18, 2));
+                            m -= 20 * Math.log10(q) * bell;
+                        }
+                    }
+                });
+                state.poles.forEach((entry) => {
+                    const wc = characteristicFrequency(entry);
+                    const order = entry.im > EPS ? 2 : 1;
+                    m += firstOrderSketchTerm(w, wc, -1, order);
+                    p += phaseSketchTerm(w, wc, -1, order);
+                    if (entry.im > EPS) {
+                        const q = qOf(entry);
+                        if (Number.isFinite(q) && q > 0.7) {
+                            const bell = Math.exp(-Math.pow(Math.log10(w / wc) / 0.18, 2));
+                            m += 20 * Math.log10(q) * bell;
+                        }
+                    }
+                });
+                mag.push(Number.isFinite(m) ? m : exact.mag[i]);
+                phase.push(Number.isFinite(p) ? p : exact.phase[i]);
+            });
+            return { mag, phase: unwrap(phase) };
+        }
+
+        function autoFrequencyRange() {
+            const freqs = [...state.zeros, ...state.poles]
+                .map(characteristicFrequency)
+                .filter((w) => w > EPS);
+            if (!freqs.length) return [0.1, 1000];
+            return [Math.max(Math.min(...freqs) / 100, 1e-6), Math.max(...freqs) * 100];
+        }
+
+        function niceRange(values, step) {
+            const finite = values.filter(Number.isFinite);
+            if (!finite.length) return [-step, step];
+            let min = Math.min(...finite);
+            let max = Math.max(...finite);
+            if (Math.abs(max - min) < EPS) {
+                min -= step;
+                max += step;
+            }
+            return [Math.floor(min / step) * step, Math.ceil(max / step) * step];
+        }
+
+        function validIncreasing(min, max) {
+            return Number.isFinite(min) && Number.isFinite(max) && max > min;
+        }
+
+        function updateRangeInputs(bodeData) {
+            const r = state.ranges;
+            if (r.autoFreq) [r.wMin, r.wMax] = autoFrequencyRange();
+            if (r.autoMag) [r.magMin, r.magMax] = niceRange(bodeData.mag, 10);
+            if (r.autoPhase) [r.phaseMin, r.phaseMax] = niceRange(bodeData.phase, 10);
+            ["wMin", "wMax", "magMin", "magMax", "phaseMin", "phaseMax"].forEach((id) => {
+                $(id).value = fmt(r[id], 5);
+                $(id).disabled = r[`auto${id[0].toUpperCase()}${id.slice(1).replace(/Min|Max/, "")}`];
+            });
+            $("wMin").disabled = $("wMax").disabled = r.autoFreq;
+            $("magMin").disabled = $("magMax").disabled = r.autoMag;
+            $("phaseMin").disabled = $("phaseMax").disabled = r.autoPhase;
+            $("autoFreq").checked = r.autoFreq;
+            $("autoMag").checked = r.autoMag;
+            $("autoPhase").checked = r.autoPhase;
+        }
+
+        function svgEl(name, attrs = {}) {
+            const el = document.createElementNS("http://www.w3.org/2000/svg", name);
+            Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
+            return el;
+        }
+
+        function linePath(points, xFn, yFn) {
+            const finite = points.filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
+            return finite.map((p, i) => `${i === 0 ? "M" : "L"} ${xFn(p.x).toFixed(2)} ${yFn(p.y).toFixed(2)}`).join(" ");
+        }
+
+        function drawAxes(svg, width, height, xTicks, yTicks, xLabel, yLabel, xFn, yFn) {
+            const plotW = width - PLOT.left - PLOT.right;
+            const plotH = height - PLOT.top - PLOT.bottom;
+            svg.appendChild(svgEl("rect", { x: PLOT.left, y: PLOT.top, width: plotW, height: plotH, fill: "white", opacity: "0.7" }));
+            xTicks.forEach((tick) => {
+                const x = xFn(tick);
+                svg.appendChild(svgEl("line", { x1: x, x2: x, y1: PLOT.top, y2: height - PLOT.bottom, stroke: "#e2e8f0", "stroke-width": 1 }));
+                const text = svgEl("text", { x, y: height - 12, "font-size": 11, fill: "#64748b", "text-anchor": "middle" });
+                text.textContent = fmt(tick, 3);
+                svg.appendChild(text);
+            });
+            yTicks.forEach((tick) => {
+                const y = yFn(tick);
+                svg.appendChild(svgEl("line", { x1: PLOT.left, x2: width - PLOT.right, y1: y, y2: y, stroke: "#e2e8f0", "stroke-width": 1 }));
+                const text = svgEl("text", { x: PLOT.left - 8, y: y + 4, "font-size": 11, fill: "#64748b", "text-anchor": "end" });
+                text.textContent = fmt(tick, 3);
+                svg.appendChild(text);
+            });
+            svg.appendChild(svgEl("rect", { x: PLOT.left, y: PLOT.top, width: plotW, height: plotH, fill: "none", stroke: "#cbd5e1" }));
+            const xl = svgEl("text", { x: width - PLOT.right, y: height - 4, "font-size": 11, fill: "#475569", "text-anchor": "end" });
+            xl.textContent = xLabel;
+            svg.appendChild(xl);
+            const yl = svgEl("text", { x: 8, y: 14, "font-size": 11, fill: "#475569" });
+            yl.textContent = yLabel;
+            svg.appendChild(yl);
+        }
+
+        function ticksLinear(min, max, count = 5) {
+            const step = (max - min) / Math.max(1, count - 1);
+            return Array.from({ length: count }, (_, i) => min + step * i);
+        }
+
+        function ticksLog(min, max) {
+            const a = Math.ceil(Math.log10(min));
+            const b = Math.floor(Math.log10(max));
+            const out = [];
+            for (let p = a; p <= b; p++) out.push(Math.pow(10, p));
+            if (!out.length) return [min, Math.sqrt(min * max), max];
+            return out;
+        }
+
+        function drawSeries(svg, points, xFn, yFn, color, width = 2, opacity = 1, dash = "") {
+            const path = svgEl("path", {
+                d: linePath(points, xFn, yFn),
+                fill: "none",
+                stroke: color,
+                "stroke-width": width,
+                opacity,
+                "stroke-linejoin": "round",
+                "stroke-linecap": "round"
+            });
+            if (dash) path.setAttribute("stroke-dasharray", dash);
+            svg.appendChild(path);
+        }
+
+        function drawBodePlot(svg, width, height, freqs, series, yMin, yMax, label) {
+            svg.innerHTML = "";
+            const xMin = state.ranges.wMin;
+            const xMax = state.ranges.wMax;
+            const logMin = Math.log10(xMin);
+            const logMax = Math.log10(xMax);
+            const xFn = (x) => PLOT.left + (Math.log10(x) - logMin) / (logMax - logMin) * (width - PLOT.left - PLOT.right);
+            const yFn = (y) => PLOT.top + (yMax - y) / (yMax - yMin) * (height - PLOT.top - PLOT.bottom);
+            drawAxes(svg, width, height, ticksLog(xMin, xMax), ticksLinear(yMin, yMax, 5), "ω rad/s", label, xFn, yFn);
+            series.forEach((s) => drawSeries(svg, s.data.map((y, i) => ({ x: freqs[i], y })), xFn, yFn, s.color, s.width, s.opacity, s.dash));
+        }
+
+        function selectedContribution(freqs, full) {
+            const entry = selectedEntry();
+            if (!entry) return null;
+            const zeroEntries = entry.kind === "zero" ? [entry] : [];
+            const poleEntries = entry.kind === "pole" ? [entry] : [];
+            const mag = [];
+            const rawPhase = [];
+            freqs.forEach((w) => {
+                const h = hAt(w, zeroEntries, poleEntries, 1);
+                mag.push(20 * Math.log10(Math.max(cAbs(h), 1e-18)));
+                rawPhase.push(cArg(h) * 180 / Math.PI);
+            });
+            const phase = unwrap(rawPhase);
+            const wc = characteristicFrequency(entry);
+            const idx = freqs.reduce((best, w, i) => Math.abs(Math.log(w / wc)) < Math.abs(Math.log(freqs[best] / wc)) ? i : best, 0);
+            const magOffset = full.mag[idx] - mag[idx];
+            const phaseOffset = full.phase[idx] - phase[idx];
+            return {
+                mag: mag.map((v) => v + magOffset),
+                phase: phase.map((v) => v + phaseOffset)
+            };
+        }
+
+        function currentBode() {
+            const r = state.ranges;
+            if (r.autoFreq) [r.wMin, r.wMax] = autoFrequencyRange();
+            if (!(r.wMin > 0) || !(r.wMax > r.wMin)) [r.wMin, r.wMax] = [0.1, 1000];
+            const freqs = logspace(r.wMin, r.wMax, 260);
+            const exact = bodeExact(freqs);
+            const active = state.mode === "sketch" ? bodeSketch(freqs, exact) : exact;
+            if (r.autoMag) [r.magMin, r.magMax] = niceRange([...exact.mag, ...active.mag], 10);
+            if (r.autoPhase) [r.phaseMin, r.phaseMax] = niceRange([...exact.phase, ...active.phase], 10);
+            if (!validIncreasing(r.magMin, r.magMax)) [r.magMin, r.magMax] = niceRange([...exact.mag, ...active.mag], 10);
+            if (!validIncreasing(r.phaseMin, r.phaseMax)) [r.phaseMin, r.phaseMax] = niceRange([...exact.phase, ...active.phase], 10);
+            return { freqs, exact, active };
+        }
+
+        function plotTimeResponse(kind) {
+            const roots = allRoots(state.poles);
+            const num = polyFromEntries(state.zeros).map((v) => v * gainK());
+            const den = polyFromEntries(state.poles);
+            const dden = polyDerivative(den);
+            const isImproper = num.length >= den.length;
+            const residues = roots.map((root) => cDiv(polyEvalComplex(num, root), polyEvalComplex(dden, root)));
+            const stableRates = roots.filter((p) => p.re < -EPS).map((p) => -p.re);
+            const growRates = roots.filter((p) => p.re > EPS).map((p) => p.re);
+            const osc = roots.filter((p) => Math.abs(p.im) > EPS).map((p) => Math.abs(p.im));
+            let tMax = 10;
+            if (growRates.length) tMax = Math.min(20, Math.max(0.5, 4 / Math.max(...growRates)));
+            else if (stableRates.length) tMax = Math.min(1000, Math.max(0.1, 8 / Math.min(...stableRates)));
+            if (osc.length) tMax = Math.max(tMax, Math.min(1000, 4 * 2 * Math.PI / Math.min(...osc)));
+            const n = 260;
+            const t = Array.from({ length: n }, (_, i) => tMax * i / (n - 1));
+            const impulse = t.map((ti) => {
+                let sum = c(0, 0);
+                roots.forEach((root, i) => {
+                    sum = cAdd(sum, cMul(residues[i], cExp(c(root.re * ti, root.im * ti))));
+                });
+                return Number.isFinite(sum.re) ? sum.re : NaN;
+            });
+            const step = [];
+            let acc = 0;
+            for (let i = 0; i < t.length; i++) {
+                if (i > 0) acc += 0.5 * (impulse[i] + impulse[i - 1]) * (t[i] - t[i - 1]);
+                step.push(acc);
+            }
+            return { t, y: kind === "impulse" ? impulse : step, tMax, isImproper };
+        }
+
+        function updateTimeRanges(impulseData, stepData) {
+            const r = state.ranges;
+            if (r.autoTimeImpulse) {
+                r.impulseTMin = 0;
+                r.impulseTMax = impulseData.tMax;
+                [r.impulseYMin, r.impulseYMax] = niceRange(impulseData.y, 1);
+            }
+            if (r.autoTimeStep) {
+                r.stepTMin = 0;
+                r.stepTMax = stepData.tMax;
+                [r.stepYMin, r.stepYMax] = niceRange(stepData.y, 1);
+            }
+            if (!validIncreasing(r.impulseTMin, r.impulseTMax)) [r.impulseTMin, r.impulseTMax] = [0, impulseData.tMax];
+            if (!validIncreasing(r.stepTMin, r.stepTMax)) [r.stepTMin, r.stepTMax] = [0, stepData.tMax];
+            if (!validIncreasing(r.impulseYMin, r.impulseYMax)) [r.impulseYMin, r.impulseYMax] = niceRange(impulseData.y, 1);
+            if (!validIncreasing(r.stepYMin, r.stepYMax)) [r.stepYMin, r.stepYMax] = niceRange(stepData.y, 1);
+            ["impulseTMin", "impulseTMax", "impulseYMin", "impulseYMax", "stepTMin", "stepTMax", "stepYMin", "stepYMax"].forEach((id) => {
+                $(id).value = fmt(r[id], 5);
+            });
+            $("impulseTMin").disabled = $("impulseTMax").disabled = $("impulseYMin").disabled = $("impulseYMax").disabled = r.autoTimeImpulse;
+            $("stepTMin").disabled = $("stepTMax").disabled = $("stepYMin").disabled = $("stepYMax").disabled = r.autoTimeStep;
+            $("autoTimeImpulse").checked = r.autoTimeImpulse;
+            $("autoTimeStep").checked = r.autoTimeStep;
+        }
+
+        function drawTimePlot(svg, data, yMin, yMax, color, label) {
+            svg.innerHTML = "";
+            const width = Number(svg.viewBox.baseVal.width) || 700;
+            const height = Number(svg.viewBox.baseVal.height) || 260;
+            const tMin = label === "Impulse" ? state.ranges.impulseTMin : state.ranges.stepTMin;
+            const tMax = label === "Impulse" ? state.ranges.impulseTMax : state.ranges.stepTMax;
+            const xFn = (x) => PLOT.left + (x - tMin) / (tMax - tMin) * (width - PLOT.left - PLOT.right);
+            const yFn = (y) => PLOT.top + (yMax - y) / (yMax - yMin) * (height - PLOT.top - PLOT.bottom);
+            drawAxes(svg, width, height, ticksLinear(tMin, tMax, 5), ticksLinear(yMin, yMax, 5), "t s", label, xFn, yFn);
+            if (yMin < 0 && yMax > 0) {
+                const y0 = yFn(0);
+                svg.appendChild(svgEl("line", { x1: PLOT.left, x2: width - PLOT.right, y1: y0, y2: y0, stroke: "#94a3b8", "stroke-dasharray": "4 4" }));
+            }
+            const points = data.t.map((x, i) => ({ x, y: data.y[i] })).filter((p) => p.x >= tMin && p.x <= tMax);
+            drawSeries(svg, points, xFn, yFn, color, 2.2);
+        }
+
+        function renderLists() {
+            renderList("zero", state.zeros, $("zeroList"));
+            renderList("pole", state.poles, $("poleList"));
+            $("zeroCount").textContent = `(${state.zeros.reduce((n, e) => n + (e.im > EPS ? 2 : 1), 0)})`;
+            $("poleCount").textContent = `(${state.poles.reduce((n, e) => n + (e.im > EPS ? 2 : 1), 0)})`;
+        }
+
+        function renderList(kind, entries, root) {
+            root.innerHTML = entries.map((entry, index) => {
+                const selected = state.selected && state.selected.kind === kind && state.selected.id === entry.id;
+                const color = kind === "zero" ? "green" : "red";
+                const border = selected ? "border-blue-400 bg-blue-50 shadow-sm" : `border-slate-200 bg-white hover:border-${color}-300`;
+                const label = entryLabel(kind, index, entry);
+                const q = qOf(entry);
+                return `
+                    <div class="entry-card border ${border} rounded p-2 text-sm transition-colors cursor-pointer group" data-kind="${kind}" data-id="${entry.id}">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-xs font-medium ${selected ? "text-blue-700 bg-blue-100" : "text-slate-700 bg-slate-100"} px-1.5 py-0.5 rounded">
+                                ${label} ${entry.im > EPS ? "(复共轭)" : "(实)"}
+                            </span>
+                            <div class="flex items-center gap-1.5 ${selected ? "" : "opacity-0 group-hover:opacity-100"} transition-opacity">
+                                <button class="convert-btn text-[10px] ${selected ? "text-blue-600 border-blue-300" : "text-slate-500 border-slate-300"} hover:text-slate-900 border rounded px-1.5 py-0.5" data-kind="${kind}" data-id="${entry.id}">
+                                    ${entry.im > EPS ? "转实数" : "转共轭"}
+                                </button>
+                                <button class="delete-btn text-slate-400 hover:text-red-500 transition-colors text-lg leading-none" data-kind="${kind}" data-id="${entry.id}">×</button>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            ${inputCell("Re", "re", entry.re, kind, entry.id, false, selected)}
+                            ${inputCell(entry.im > EPS ? "±Im" : "Im", "im", entry.im, kind, entry.id, false, selected)}
+                            ${inputCell("w0", "w0", characteristicFrequency(entry), kind, entry.id, false, selected)}
+                            ${inputCell("Q", "q", entry.im > EPS ? (Number.isFinite(q) ? q : "∞") : "-", kind, entry.id, entry.im <= EPS || !Number.isFinite(q), selected)}
+                        </div>
+                    </div>`;
+            }).join("");
+        }
+
+        function inputCell(label, field, value, kind, id, disabled, selected) {
+            const cls = selected ? "border-blue-200 bg-white" : "border-slate-200 bg-white";
+            const labelCls = selected ? "bg-blue-50 text-blue-600 border-blue-200" : "bg-slate-50 text-slate-500 border-slate-200";
+            return `
+                <label class="flex items-center border ${cls} rounded overflow-hidden ${disabled ? "opacity-60" : ""}">
+                    <span class="${labelCls} text-xs px-2 py-1 border-r w-10 text-center">${label}</span>
+                    <input type="${disabled ? "text" : "number"}" step="any" value="${typeof value === "number" ? fmt(value, 5) : value}" ${disabled ? "disabled" : ""}
+                        data-kind="${kind}" data-id="${id}" data-field="${field}"
+                        class="entry-input w-full px-2 py-1 bg-transparent focus:outline-none text-right ${selected ? "text-blue-900" : "text-slate-800"}">
+                </label>`;
+        }
+
+        function pzRange() {
+            const values = [...state.zeros, ...state.poles].flatMap((e) => [Math.abs(e.re), Math.abs(e.im)]);
+            return Math.max(1, Math.max(...values, 1) * 1.35);
+        }
+
+        function renderPzMap() {
+            const svg = $("pzMap");
+            svg.innerHTML = "";
+            const size = 340;
+            const range = pzRange();
+            const xFn = (x) => size / 2 + x / range * (size * 0.42);
+            const yFn = (y) => size / 2 - y / range * (size * 0.42);
+            svg.appendChild(svgEl("rect", { x: 0, y: 0, width: size / 2, height: size, fill: "#dbeafe", opacity: 0.25 }));
+            svg.appendChild(svgEl("line", { x1: size / 2, x2: size / 2, y1: 0, y2: size, stroke: "#94a3b8" }));
+            svg.appendChild(svgEl("line", { x1: 0, x2: size, y1: size / 2, y2: size / 2, stroke: "#94a3b8" }));
+            const reText = svgEl("text", { x: size - 20, y: size / 2 - 8, "font-size": 11, fill: "#64748b" });
+            reText.textContent = "Re";
+            svg.appendChild(reText);
+            const imText = svgEl("text", { x: size / 2 + 8, y: 18, "font-size": 11, fill: "#64748b" });
+            imText.textContent = "Im";
+            svg.appendChild(imText);
+            drawPzEntries(svg, state.zeros, "zero", xFn, yFn);
+            drawPzEntries(svg, state.poles, "pole", xFn, yFn);
+        }
+
+        function drawPzEntries(svg, entries, kind, xFn, yFn) {
+            entries.forEach((entry) => {
+                const selected = state.selected && state.selected.kind === kind && state.selected.id === entry.id;
+                const points = entry.im > EPS ? [entry.im, -entry.im] : [0];
+                points.forEach((im, pointIndex) => {
+                    const g = svgEl("g", {
+                        class: "pz-marker",
+                        "data-kind": kind,
+                        "data-id": entry.id,
+                        "data-point": pointIndex,
+                        transform: `translate(${xFn(entry.re)}, ${yFn(im)})`,
+                        cursor: "grab"
+                    });
+                    if (selected) {
+                        g.appendChild(svgEl("circle", { r: 15, fill: "#60a5fa", opacity: 0.2 }));
+                    }
+                    if (kind === "zero") {
+                        g.appendChild(svgEl("circle", { r: 6, fill: "white", stroke: selected ? "#2563eb" : "#22c55e", "stroke-width": 3 }));
+                    } else {
+                        g.appendChild(svgEl("line", { x1: -7, y1: -7, x2: 7, y2: 7, stroke: selected ? "#2563eb" : "#ef4444", "stroke-width": 3, "stroke-linecap": "round" }));
+                        g.appendChild(svgEl("line", { x1: -7, y1: 7, x2: 7, y2: -7, stroke: selected ? "#2563eb" : "#ef4444", "stroke-width": 3, "stroke-linecap": "round" }));
+                    }
+                    svg.appendChild(g);
+                });
+            });
+        }
+
+        function renderSelectedPanel() {
+            const entry = selectedEntry();
+            const toolbar = $("selectedToolbar");
+            if (!entry) {
+                toolbar.classList.add("hidden");
+                $("selectedInfo").textContent = "点击列表或零极点图可选中对象；拖动图中对象可修改位置。";
+                return;
+            }
+            const q = qOf(entry);
+            const label = entryLabel(entry.kind, indexEntries(entry.kind).indexOf(entry), entry);
+            toolbar.classList.remove("hidden");
+            toolbar.innerHTML = `
+                <span class="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">${label}</span>
+                <button id="selectedConvert" class="text-slate-500 hover:text-slate-800 border border-slate-300 rounded px-2 py-0.5">${entry.im > EPS ? "转实数" : "转共轭"}</button>
+                <button id="selectedDelete" class="text-red-500 hover:text-red-700 border border-red-200 rounded px-2 py-0.5">删除</button>`;
+            $("selectedInfo").textContent = `${entry.kind === "zero" ? "零点" : "极点"} ${label}: Re=${fmt(entry.re)}, Im=${entry.im > EPS ? "±" + fmt(entry.im) : "0"}, w0=${fmt(characteristicFrequency(entry))}, Q=${entry.im > EPS ? fmt(q) : "不适用"}`;
+            $("selectedConvert").onclick = () => convertEntry(entry.kind, entry.id);
+            $("selectedDelete").onclick = () => deleteEntry(entry.kind, entry.id);
+        }
+
+        function renderInputs() {
+            $("hsExpression").innerHTML = expressionHtml();
+            $("wRef").value = fmt(state.wRef, 5);
+            $("gRef").value = fmt(state.gRef, 5);
+            $("gainUnit").value = state.gainUnit;
+            $("modeExact").className = state.mode === "exact"
+                ? "px-3 py-1 text-xs rounded bg-white shadow-sm font-medium text-slate-800"
+                : "px-3 py-1 text-xs rounded font-medium text-slate-500 hover:text-slate-700";
+            $("modeSketch").className = state.mode === "sketch"
+                ? "px-3 py-1 text-xs rounded bg-white shadow-sm font-medium text-slate-800"
+                : "px-3 py-1 text-xs rounded font-medium text-slate-500 hover:text-slate-700";
+            renderLists();
+            renderSelectedPanel();
+            renderPzMap();
+        }
+
+        function systemWarnings(extra = "") {
+            const warnings = [];
+            if (state.poles.some((p) => p.re > EPS)) warnings.push("系统含右半平面极点，响应不稳定。");
+            if (state.poles.some((p) => Math.abs(p.re) <= EPS)) warnings.push("系统含虚轴或原点极点，响应可能不衰减。");
+            if (extra) warnings.push(extra);
+            $("systemNotice").textContent = warnings.join(" ");
+            $("systemNotice").className = warnings.length ? "mt-2 text-xs text-amber-600" : "mt-2 text-xs text-slate-500";
+            if (!warnings.length) $("systemNotice").textContent = "所有视图会随零极点、增益和范围设置实时更新。";
+        }
+
+        function renderPlots() {
+            const bode = currentBode();
+            updateRangeInputs(bode.active);
+            const selected = selectedEntry();
+            const contribution = selectedContribution(bode.freqs, bode.exact);
+            $("contributionHint").classList.toggle("hidden", !selected);
+            $("contributionHint").classList.toggle("flex", !!selected);
+            if (selected) {
+                const label = entryLabel(selected.kind, indexEntries(selected.kind).indexOf(selected), selected);
+                $("contributionText").textContent = `展示选中对象贡献 (${label})`;
+            }
+            const magSeries = [];
+            const phaseSeries = [];
+            if (selected && contribution) {
+                magSeries.push({ data: bode.exact.mag, color: "#94a3b8", width: 2, opacity: 0.45 });
+                phaseSeries.push({ data: bode.exact.phase, color: "#94a3b8", width: 2, opacity: 0.45 });
+                magSeries.push({ data: contribution.mag, color: "#2563eb", width: 3, opacity: 1 });
+                phaseSeries.push({ data: contribution.phase, color: "#ea580c", width: 3, opacity: 1 });
+            } else if (state.mode === "sketch") {
+                magSeries.push({ data: bode.exact.mag, color: "#94a3b8", width: 2, opacity: 0.4 });
+                phaseSeries.push({ data: bode.exact.phase, color: "#94a3b8", width: 2, opacity: 0.4 });
+                magSeries.push({ data: bode.active.mag, color: "#2563eb", width: 3, opacity: 1, dash: "8 5" });
+                phaseSeries.push({ data: bode.active.phase, color: "#ea580c", width: 3, opacity: 1, dash: "8 5" });
+            } else {
+                magSeries.push({ data: bode.active.mag, color: "#2563eb", width: 2.5, opacity: 1 });
+                phaseSeries.push({ data: bode.active.phase, color: "#ea580c", width: 2.5, opacity: 1 });
+            }
+            drawBodePlot($("magPlot"), 800, 240, bode.freqs, magSeries, state.ranges.magMin, state.ranges.magMax, "Magnitude dB");
+            drawBodePlot($("phasePlot"), 800, 240, bode.freqs, phaseSeries, state.ranges.phaseMin, state.ranges.phaseMax, "Phase deg");
+
+            const impulse = plotTimeResponse("impulse");
+            const step = plotTimeResponse("step");
+            updateTimeRanges(impulse, step);
+            drawTimePlot($("impulsePlot"), impulse, state.ranges.impulseYMin, state.ranges.impulseYMax, "#10b981", "Impulse");
+            drawTimePlot($("stepPlot"), step, state.ranges.stepYMin, state.ranges.stepYMax, "#8b5cf6", "Step");
+            systemWarnings(impulse.isImproper ? "当前传递函数非严格真有理，时域图忽略瞬时冲激项。" : "");
+        }
+
+        function render() {
+            renderInputs();
+            renderPlots();
+        }
+
+        function addEntry(kind) {
+            const list = kind === "zero" ? state.zeros : state.poles;
+            const entry = newEntry(kind, kind === "zero" ? -10 : -1, 0);
+            list.push(entry);
+            state.selected = { kind, id: entry.id };
+            render();
+        }
+
+        function deleteEntry(kind, id) {
+            const list = kind === "zero" ? state.zeros : state.poles;
+            const index = list.findIndex((entry) => entry.id === id);
+            if (index >= 0) list.splice(index, 1);
+            if (state.selected && state.selected.kind === kind && state.selected.id === id) state.selected = null;
+            render();
+        }
+
+        function convertEntry(kind, id) {
+            const list = kind === "zero" ? state.zeros : state.poles;
+            const entry = list.find((item) => item.id === id);
+            if (!entry) return;
+            if (entry.im > EPS) {
+                entry.im = 0;
+            } else {
+                const w0 = Math.max(Math.abs(entry.re), 1);
+                const q = 2;
+                const sign = entry.re >= 0 ? 1 : -1;
+                entry.re = sign * w0 / (2 * q);
+                entry.im = Math.sqrt(Math.max(0, w0 * w0 - entry.re * entry.re));
+            }
+            state.selected = { kind, id };
+            render();
+        }
+
+        function updateEntryField(kind, id, field, value) {
+            const list = kind === "zero" ? state.zeros : state.poles;
+            const entry = list.find((item) => item.id === id);
+            if (!entry) return;
+            const num = Number(value);
+            if (field !== "q" && !Number.isFinite(num)) return;
+            if (field === "re") entry.re = num;
+            if (field === "im") entry.im = Math.abs(num);
+            if (field === "w0") {
+                if (!(num >= 0)) return;
+                if (entry.im > EPS) {
+                    const q = qOf(entry);
+                    if (Number.isFinite(q)) setFromW0Q(entry, Math.max(num, EPS), q);
+                } else {
+                    const sign = entry.re >= 0 ? 1 : -1;
+                    entry.re = sign * Math.max(num, 0);
+                }
+            }
+            if (field === "q") setFromW0Q(entry, characteristicFrequency(entry), value);
+            state.selected = { kind, id };
+            render();
+        }
+
+        function pointerToPz(evt) {
+            const svg = $("pzMap");
+            const rect = svg.getBoundingClientRect();
+            const x = (evt.clientX - rect.left) / rect.width * 340;
+            const y = (evt.clientY - rect.top) / rect.height * 340;
+            const range = pzRange();
+            return {
+                re: (x - 170) / (340 * 0.42) * range,
+                im: -(y - 170) / (340 * 0.42) * range
+            };
+        }
+
+        function bindEvents() {
+            $("resetExample").addEventListener("click", resetExample);
+            $("modeExact").addEventListener("click", () => { state.mode = "exact"; render(); });
+            $("modeSketch").addEventListener("click", () => { state.mode = "sketch"; render(); });
+            $("clearSelectionFromBode").addEventListener("click", () => { state.selected = null; render(); });
+            $("addZero").addEventListener("click", () => addEntry("zero"));
+            $("addPole").addEventListener("click", () => addEntry("pole"));
+            $("wRef").addEventListener("change", (e) => { const v = Number(e.target.value); if (v > 0) state.wRef = v; render(); });
+            $("gRef").addEventListener("change", (e) => { const v = Number(e.target.value); if (Number.isFinite(v)) state.gRef = v; render(); });
+            $("gainUnit").addEventListener("change", (e) => { state.gainUnit = e.target.value; render(); });
+            ["autoFreq", "autoMag", "autoPhase", "autoTimeImpulse", "autoTimeStep"].forEach((id) => {
+                $(id).addEventListener("change", (e) => {
+                    state.ranges[id] = e.target.checked;
+                    render();
+                });
+            });
+            ["wMin", "wMax", "magMin", "magMax", "phaseMin", "phaseMax", "impulseTMin", "impulseTMax", "impulseYMin", "impulseYMax", "stepTMin", "stepTMax", "stepYMin", "stepYMax"].forEach((id) => {
+                $(id).addEventListener("change", (e) => {
+                    const v = Number(e.target.value);
+                    if (Number.isFinite(v)) state.ranges[id] = v;
+                    render();
+                });
+            });
+            $("zeroList").addEventListener("click", listClick);
+            $("poleList").addEventListener("click", listClick);
+            $("zeroList").addEventListener("change", listChange);
+            $("poleList").addEventListener("change", listChange);
+            $("zeroList").addEventListener("focusin", listFocusIn);
+            $("poleList").addEventListener("focusin", listFocusIn);
+            $("zeroList").addEventListener("keydown", listKeyDown);
+            $("poleList").addEventListener("keydown", listKeyDown);
+            ["pointerdown", "mousedown", "mouseup", "click", "dblclick"].forEach((eventName) => {
+                $("zeroList").addEventListener(eventName, stopInputPointerEvent);
+                $("poleList").addEventListener(eventName, stopInputPointerEvent);
+            });
+            $("pzMap").addEventListener("pointerdown", pzPointerDown);
+            $("pzMap").addEventListener("pointermove", pzPointerMove);
+            window.addEventListener("pointerup", pzPointerUp);
+        }
+
+        function listClick(e) {
+            if (e.target.closest(".entry-input")) return;
+            const deleteBtn = e.target.closest(".delete-btn");
+            const convertBtn = e.target.closest(".convert-btn");
+            if (deleteBtn) {
+                deleteEntry(deleteBtn.dataset.kind, deleteBtn.dataset.id);
+                return;
+            }
+            if (convertBtn) {
+                convertEntry(convertBtn.dataset.kind, convertBtn.dataset.id);
+                return;
+            }
+            const card = e.target.closest(".entry-card");
+            if (card) {
+                state.selected = { kind: card.dataset.kind, id: card.dataset.id };
+                render();
+            }
+        }
+
+        function listChange(e) {
+            const input = e.target.closest(".entry-input");
+            if (!input) return;
+            updateEntryField(input.dataset.kind, input.dataset.id, input.dataset.field, input.value);
+        }
+
+        function listFocusIn(e) {
+            const input = e.target.closest(".entry-input");
+            if (!input) return;
+            state.selected = { kind: input.dataset.kind, id: input.dataset.id };
+        }
+
+        function listKeyDown(e) {
+            const input = e.target.closest(".entry-input");
+            if (!input || e.key !== "Enter") return;
+            e.preventDefault();
+            updateEntryField(input.dataset.kind, input.dataset.id, input.dataset.field, input.value);
+        }
+
+        function stopInputPointerEvent(e) {
+            if (!e.target.closest(".entry-input")) return;
+            e.stopPropagation();
+        }
+
+        function pzPointerDown(e) {
+            const marker = e.target.closest(".pz-marker");
+            if (!marker) {
+                state.selected = null;
+                render();
+                return;
+            }
+            e.preventDefault();
+            state.selected = { kind: marker.dataset.kind, id: marker.dataset.id };
+            state.drag = { kind: marker.dataset.kind, id: marker.dataset.id };
+            $("pzMap").setPointerCapture(e.pointerId);
+            render();
+        }
+
+        function pzPointerMove(e) {
+            if (!state.drag) return;
+            const list = state.drag.kind === "zero" ? state.zeros : state.poles;
+            const entry = list.find((item) => item.id === state.drag.id);
+            if (!entry) return;
+            const pos = pointerToPz(e);
+            entry.re = pos.re;
+            entry.im = entry.im > EPS ? Math.abs(pos.im) : 0;
+            render();
+        }
+
+        function pzPointerUp() {
+            state.drag = null;
+        }
+
+        bindEvents();
+        resetExample();
+    </script>
 </body>
 </html>
