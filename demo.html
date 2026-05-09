@@ -21,6 +21,8 @@
         }
         .plot-svg text { font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
         .tap-target { touch-action: none; }
+        details > summary { list-style: none; }
+        details > summary::-webkit-details-marker { display: none; }
         #pzMap text {
             user-select: none;
             -webkit-user-select: none;
@@ -47,7 +49,7 @@
     <div class="flex-1 flex flex-col md:flex-row overflow-hidden">
         <main class="flex-1 flex flex-col overflow-y-auto bg-slate-100 p-4 gap-4">
             <section class="bg-white border border-slate-200 rounded-lg shadow-sm flex flex-col min-h-[480px] flex-[2]">
-                <div class="px-4 py-3 border-b border-slate-100 flex flex-col xl:flex-row xl:justify-between gap-3 shrink-0">
+                <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-3 shrink-0">
                     <div class="flex flex-wrap items-center gap-4">
                         <h2 class="font-medium text-slate-800">波特图 (Bode Plot)</h2>
                         <div class="flex bg-slate-100 p-1 rounded-md border border-slate-200">
@@ -59,89 +61,140 @@
                             <button id="clearSelectionFromBode" class="hover:text-blue-900 bg-white rounded-full px-1">×</button>
                         </div>
                     </div>
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                        <div>
-                            <label class="flex justify-between items-center gap-2 text-slate-700 font-medium">
-                                <span>频率 rad/s</span>
-                                <span class="font-normal text-slate-500"><input id="autoFreq" type="checkbox" class="align-middle" checked> 自动</span>
-                            </label>
-                            <div class="flex items-center gap-1 mt-1">
-                                <input id="wMin" type="number" step="any" class="range-input w-20 border border-slate-200 rounded px-2 py-1">
-                                <span class="text-slate-400">至</span>
-                                <input id="wMax" type="number" step="any" class="range-input w-20 border border-slate-200 rounded px-2 py-1">
+                    <details class="relative shrink-0">
+                        <summary class="p-1.5 text-slate-600 bg-slate-100 border border-slate-200 rounded hover:bg-slate-200 transition-colors shadow-inner flex items-center justify-center cursor-pointer">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 011.45.12l.773.774c.39.389.44 1.002.12 1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.397.505.71.93.78l.893.15c.543.09.94.56.94 1.109v1.094c0 .55-.397 1.02-.94 1.11l-.893.149c-.425.07-.765.383-.93.78-.165.398-.143.854.107 1.204l.527.738a1.125 1.125 0 01-.12 1.45l-.774.773a1.125 1.125 0 01-1.449.12l-.738-.527c-.35-.25-.806-.272-1.203-.107-.397.165-.71-.505-.781-.929l-.149.894c-.09.542-.56.94-1.11.94h-1.094c-.55 0-1.019-.398-1.11-.94l-.148-.894c-.071-.424-.384-.764-.781-.93-.398-.164-.854-.142-1.204.108l-.738.527c-.389.39-1.002.44-1.45.12l-.773-.774a1.125 1.125 0 01-.12-1.45l.527-.737c.25-.35.273-.806.108-1.204-.165-.397-.505-.71-.93-.78l-.894-.15c-.542-.09-.94-.56-.94-1.109v-1.094c0-.55.398-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.107-1.204l-.527-.738a1.125 1.125 0 01.12-1.45l.773-.773a1.125 1.125 0 011.45-.12l.737.527c.35.25.807.272 1.204.107.397-.165.71-.505.78-.929l.15-.894z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                        </summary>
+                        <div class="absolute right-0 top-full mt-2 w-72 bg-white border border-slate-200 rounded-lg shadow-xl z-30 p-3 text-xs">
+                            <div class="flex justify-between items-center mb-3 border-b border-slate-100 pb-2">
+                                <h3 class="text-xs font-semibold text-slate-500">波特图坐标范围</h3>
+                                <label class="font-normal text-slate-500 cursor-pointer"><input id="autoBode" type="checkbox" class="align-middle" checked> 自动</label>
+                            </div>
+                            <div class="space-y-3">
+                                <div>
+                                    <label class="block text-slate-700 font-medium">频率 rad/s</label>
+                                    <div class="flex items-center gap-2 mt-1">
+                                        <input id="wMin" type="number" step="any" class="range-input w-full border border-slate-200 rounded px-2 py-1">
+                                        <span class="text-slate-400">至</span>
+                                        <input id="wMax" type="number" step="any" class="range-input w-full border border-slate-200 rounded px-2 py-1">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-slate-700 font-medium">幅度 dB</label>
+                                    <div class="flex items-center gap-2 mt-1">
+                                        <input id="magMin" type="number" step="any" class="range-input w-full border border-slate-200 rounded px-2 py-1">
+                                        <span class="text-slate-400">至</span>
+                                        <input id="magMax" type="number" step="any" class="range-input w-full border border-slate-200 rounded px-2 py-1">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-slate-700 font-medium">相位 °</label>
+                                    <div class="flex items-center gap-2 mt-1">
+                                        <input id="phaseMin" type="number" step="any" class="range-input w-full border border-slate-200 rounded px-2 py-1">
+                                        <span class="text-slate-400">至</span>
+                                        <input id="phaseMax" type="number" step="any" class="range-input w-full border border-slate-200 rounded px-2 py-1">
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        <div>
-                            <label class="flex justify-between items-center gap-2 text-slate-700 font-medium">
-                                <span>幅度 dB</span>
-                                <span class="font-normal text-slate-500"><input id="autoMag" type="checkbox" class="align-middle" checked> 自动</span>
-                            </label>
-                            <div class="flex items-center gap-1 mt-1">
-                                <input id="magMin" type="number" step="any" class="range-input w-20 border border-slate-200 rounded px-2 py-1">
-                                <span class="text-slate-400">至</span>
-                                <input id="magMax" type="number" step="any" class="range-input w-20 border border-slate-200 rounded px-2 py-1">
-                            </div>
-                        </div>
-                        <div>
-                            <label class="flex justify-between items-center gap-2 text-slate-700 font-medium">
-                                <span>相位 °</span>
-                                <span class="font-normal text-slate-500"><input id="autoPhase" type="checkbox" class="align-middle" checked> 自动</span>
-                            </label>
-                            <div class="flex items-center gap-1 mt-1">
-                                <input id="phaseMin" type="number" step="any" class="range-input w-20 border border-slate-200 rounded px-2 py-1">
-                                <span class="text-slate-400">至</span>
-                                <input id="phaseMax" type="number" step="any" class="range-input w-20 border border-slate-200 rounded px-2 py-1">
-                            </div>
-                        </div>
-                    </div>
+                    </details>
                 </div>
                 <div class="flex-1 p-4 flex flex-col gap-3">
                     <div class="flex-1 min-h-[180px] relative border border-slate-200 rounded bg-white plot-grid">
-                        <svg id="magPlot" class="plot-svg absolute inset-0 w-full h-full" viewBox="0 0 800 240" preserveAspectRatio="none"></svg>
+                        <svg id="magPlot" class="plot-svg absolute inset-0 w-full h-full" viewBox="0 0 800 240"></svg>
                     </div>
                     <div class="flex-1 min-h-[180px] relative border border-slate-200 rounded bg-white plot-grid">
-                        <svg id="phasePlot" class="plot-svg absolute inset-0 w-full h-full" viewBox="0 0 800 240" preserveAspectRatio="none"></svg>
+                        <svg id="phasePlot" class="plot-svg absolute inset-0 w-full h-full" viewBox="0 0 800 240"></svg>
                     </div>
                 </div>
             </section>
 
             <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
                 <section class="bg-white border border-slate-200 rounded-lg shadow-sm flex flex-col min-h-[300px]">
-                    <div class="px-4 py-2 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <div class="px-4 py-2 border-b border-slate-100 flex items-center justify-between gap-2">
                         <h2 class="font-medium text-slate-800 text-sm">冲激响应 (Impulse Response)</h2>
-                        <div class="flex flex-wrap items-center gap-2 text-xs">
-                            <label class="text-slate-500"><input id="autoTimeImpulse" type="checkbox" checked> 自动</label>
-                            <input id="impulseTMin" type="number" step="any" class="time-input w-16 border border-slate-200 rounded px-2 py-1">
-                            <span class="text-slate-400">至</span>
-                            <input id="impulseTMax" type="number" step="any" class="time-input w-16 border border-slate-200 rounded px-2 py-1">
-                            <input id="impulseYMin" type="number" step="any" class="time-input w-16 border border-slate-200 rounded px-2 py-1">
-                            <span class="text-slate-400">至</span>
-                            <input id="impulseYMax" type="number" step="any" class="time-input w-16 border border-slate-200 rounded px-2 py-1">
-                        </div>
+                        <details class="relative shrink-0">
+                            <summary class="p-1 text-slate-500 hover:text-slate-700 rounded hover:bg-slate-100 transition-colors cursor-pointer">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 011.45.12l.773.774c.39.389.44 1.002.12 1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.397.505.71.93.78l.893.15c.543.09.94.56.94 1.109v1.094c0 .55-.397 1.02-.94 1.11l-.893.149c-.425.07-.765.383-.93.78-.165.398-.143.854.107 1.204l.527.738a1.125 1.125 0 01-.12 1.45l-.774.773a1.125 1.125 0 01-1.449.12l-.738-.527c-.35-.25-.806-.272-1.203-.107-.397.165-.71-.505-.781-.929l-.149.894c-.09.542-.56.94-1.11.94h-1.094c-.55 0-1.019-.398-1.11-.94l-.148-.894c-.071-.424-.384-.764-.781-.93-.398-.164-.854-.142-1.204.108l-.738.527c-.389.39-1.002.44-1.45.12l-.773-.774a1.125 1.125 0 01-.12-1.45l.527-.737c.25-.35.273-.806.108-1.204-.165-.397-.505-.71-.93-.78l-.894-.15c-.542-.09-.94-.56-.94-1.109v-1.094c0-.55.398-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.107-1.204l-.527-.738a1.125 1.125 0 01.12-1.45l.773-.773a1.125 1.125 0 011.45-.12l.737.527c.35.25.807.272 1.204.107.397-.165.71-.505.78-.929l.15-.894z" />
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                </svg>
+                            </summary>
+                            <div class="absolute right-0 top-full mt-2 w-64 bg-white border border-slate-200 rounded-lg shadow-xl z-30 p-3 text-xs">
+                                <h3 class="text-xs font-semibold text-slate-500 mb-3 border-b border-slate-100 pb-2">冲激响应坐标范围</h3>
+                                <label class="flex justify-between items-center text-slate-700 font-medium">
+                                    <span class="font-normal text-slate-500"><input id="autoTimeImpulse" type="checkbox" checked> 自动</span>
+                                </label>
+                                <div class="space-y-3 mt-2">
+                                    <div>
+                                        <label class="block text-slate-700 font-medium">时间 (s)</label>
+                                        <div class="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 mt-1">
+                                            <input id="impulseTMin" type="number" step="any" class="time-input min-w-0 w-full border border-slate-200 rounded px-2 py-1">
+                                            <span class="text-slate-400">至</span>
+                                            <input id="impulseTMax" type="number" step="any" class="time-input min-w-0 w-full border border-slate-200 rounded px-2 py-1">
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="block text-slate-700 font-medium">响应</label>
+                                        <div class="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 mt-1">
+                                            <input id="impulseYMin" type="number" step="any" class="time-input min-w-0 w-full border border-slate-200 rounded px-2 py-1">
+                                            <span class="text-slate-400">至</span>
+                                            <input id="impulseYMax" type="number" step="any" class="time-input min-w-0 w-full border border-slate-200 rounded px-2 py-1">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </details>
                     </div>
                     <div class="flex-1 p-4">
                         <div class="h-full min-h-[220px] relative border border-slate-200 rounded bg-white plot-grid">
-                            <svg id="impulsePlot" class="plot-svg absolute inset-0 w-full h-full" viewBox="0 0 700 260" preserveAspectRatio="none"></svg>
+                            <svg id="impulsePlot" class="plot-svg absolute inset-0 w-full h-full" viewBox="0 0 700 260"></svg>
                         </div>
                     </div>
                 </section>
 
                 <section class="bg-white border border-slate-200 rounded-lg shadow-sm flex flex-col min-h-[300px]">
-                    <div class="px-4 py-2 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <div class="px-4 py-2 border-b border-slate-100 flex items-center justify-between gap-2">
                         <h2 class="font-medium text-slate-800 text-sm">阶跃响应 (Step Response)</h2>
-                        <div class="flex flex-wrap items-center gap-2 text-xs">
-                            <label class="text-slate-500"><input id="autoTimeStep" type="checkbox" checked> 自动</label>
-                            <input id="stepTMin" type="number" step="any" class="time-input w-16 border border-slate-200 rounded px-2 py-1">
-                            <span class="text-slate-400">至</span>
-                            <input id="stepTMax" type="number" step="any" class="time-input w-16 border border-slate-200 rounded px-2 py-1">
-                            <input id="stepYMin" type="number" step="any" class="time-input w-16 border border-slate-200 rounded px-2 py-1">
-                            <span class="text-slate-400">至</span>
-                            <input id="stepYMax" type="number" step="any" class="time-input w-16 border border-slate-200 rounded px-2 py-1">
-                        </div>
+                        <details class="relative shrink-0">
+                            <summary class="p-1 text-slate-500 hover:text-slate-700 rounded hover:bg-slate-100 transition-colors cursor-pointer">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 011.45.12l.773.774c.39.389.44 1.002.12 1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.397.505.71.93.78l.893.15c.543.09.94.56.94 1.109v1.094c0 .55-.397 1.02-.94 1.11l-.893.149c-.425.07-.765.383-.93.78-.165.398-.143.854.107 1.204l.527.738a1.125 1.125 0 01-.12 1.45l-.774.773a1.125 1.125 0 01-1.449.12l-.738-.527c-.35-.25-.806-.272-1.203-.107-.397.165-.71-.505-.781-.929l-.149.894c-.09.542-.56.94-1.11.94h-1.094c-.55 0-1.019-.398-1.11-.94l-.148-.894c-.071-.424-.384-.764-.781-.93-.398-.164-.854-.142-1.204.108l-.738.527c-.389.39-1.002.44-1.45.12l-.773-.774a1.125 1.125 0 01-.12-1.45l.527-.737c.25-.35.273-.806.108-1.204-.165-.397-.505-.71-.93-.78l-.894-.15c-.542-.09-.94-.56-.94-1.109v-1.094c0-.55.398-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.107-1.204l-.527-.738a1.125 1.125 0 01.12-1.45l.773-.773a1.125 1.125 0 011.45-.12l.737.527c.35.25.807.272 1.204.107.397-.165.71-.505.78-.929l.15-.894z" />
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                </svg>
+                            </summary>
+                            <div class="absolute right-0 top-full mt-2 w-64 bg-white border border-slate-200 rounded-lg shadow-xl z-30 p-3 text-xs">
+                                <h3 class="text-xs font-semibold text-slate-500 mb-3 border-b border-slate-100 pb-2">阶跃响应坐标范围</h3>
+                                <label class="flex justify-between items-center text-slate-700 font-medium">
+                                    <span class="font-normal text-slate-500"><input id="autoTimeStep" type="checkbox" checked> 自动</span>
+                                </label>
+                                <div class="space-y-3 mt-2">
+                                    <div>
+                                        <label class="block text-slate-700 font-medium">时间 (s)</label>
+                                        <div class="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 mt-1">
+                                            <input id="stepTMin" type="number" step="any" class="time-input min-w-0 w-full border border-slate-200 rounded px-2 py-1">
+                                            <span class="text-slate-400">至</span>
+                                            <input id="stepTMax" type="number" step="any" class="time-input min-w-0 w-full border border-slate-200 rounded px-2 py-1">
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="block text-slate-700 font-medium">响应</label>
+                                        <div class="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 mt-1">
+                                            <input id="stepYMin" type="number" step="any" class="time-input min-w-0 w-full border border-slate-200 rounded px-2 py-1">
+                                            <span class="text-slate-400">至</span>
+                                            <input id="stepYMax" type="number" step="any" class="time-input min-w-0 w-full border border-slate-200 rounded px-2 py-1">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </details>
                     </div>
                     <div class="flex-1 p-4">
                         <div class="h-full min-h-[220px] relative border border-slate-200 rounded bg-white plot-grid">
-                            <svg id="stepPlot" class="plot-svg absolute inset-0 w-full h-full" viewBox="0 0 700 260" preserveAspectRatio="none"></svg>
+                            <svg id="stepPlot" class="plot-svg absolute inset-0 w-full h-full" viewBox="0 0 700 260"></svg>
                         </div>
                     </div>
                 </section>
@@ -485,48 +538,55 @@
             return sign * order * 20 * Math.log10(w / w0);
         }
 
-        function phaseSketchTerm(w, w0, sign, order) {
-            const lo = w0 / 10;
-            const hi = w0 * 10;
+        function phaseSketchTerm(w, w0, sign, order, q = 0.5) {
+            const effectiveQ = Math.max(Math.abs(q), EPS);
+            const decades = 1 / (2 * effectiveQ);
+            const lo = Math.max(w0 * Math.pow(10, -decades), EPS);
+            const hi = Math.max(w0 * Math.pow(10, decades), lo * 1.001);
             if (w <= lo) return 0;
             if (w >= hi) return sign * order * 90;
-            return sign * order * 45 * (1 + Math.log10(w / w0));
+            return sign * order * 90 * Math.log10(w / lo) / Math.log10(hi / lo);
         }
 
-        function bodeSketch(freqs, exact) {
+        function sketchEntryMag(entry, kind, w) {
+            const wc = characteristicFrequency(entry);
+            const order = entry.im > EPS ? 2 : 1;
+            let value = firstOrderSketchTerm(w, wc, kind === "zero" ? 1 : -1, order);
+            if (entry.im > EPS) {
+                const q = qOf(entry);
+                if (Number.isFinite(q) && q > 0.7) {
+                    const bell = Math.exp(-Math.pow(Math.log10(w / wc) / 0.18, 2));
+                    value += (kind === "zero" ? -1 : 1) * 20 * Math.log10(q) * bell;
+                }
+            }
+            return value;
+        }
+
+        function sketchEntryPhase(entry, kind, w) {
+            const wc = characteristicFrequency(entry);
+            const order = entry.im > EPS ? 2 : 1;
+            const q = entry.im > EPS && Number.isFinite(qOf(entry)) ? qOf(entry) : 0.5;
+            const rootDirection = entry.re <= 0 ? 1 : -1;
+            const transferDirection = kind === "zero" ? rootDirection : -rootDirection;
+            return phaseSketchTerm(w, wc, transferDirection, order, q);
+        }
+
+        function bodeSketch(freqs, exact, zeroEntries = state.zeros, poleEntries = state.poles, k = gainK()) {
             const w0 = freqs[0];
-            const anchor = 20 * Math.log10(Math.max(cAbs(hAt(w0)), 1e-18));
-            const startPhase = cArg(hAt(w0)) * 180 / Math.PI;
+            const anchor = 20 * Math.log10(Math.max(cAbs(hAt(w0, zeroEntries, poleEntries, k)), 1e-18));
+            const startPhase = cArg(hAt(w0, zeroEntries, poleEntries, k)) * 180 / Math.PI;
             const mag = [];
             const phase = [];
             freqs.forEach((w, i) => {
                 let m = anchor;
                 let p = startPhase;
-                state.zeros.forEach((entry) => {
-                    const wc = characteristicFrequency(entry);
-                    const order = entry.im > EPS ? 2 : 1;
-                    m += firstOrderSketchTerm(w, wc, 1, order);
-                    p += phaseSketchTerm(w, wc, 1, order);
-                    if (entry.im > EPS) {
-                        const q = qOf(entry);
-                        if (Number.isFinite(q) && q > 0.7) {
-                            const bell = Math.exp(-Math.pow(Math.log10(w / wc) / 0.18, 2));
-                            m -= 20 * Math.log10(q) * bell;
-                        }
-                    }
+                zeroEntries.forEach((entry) => {
+                    m += sketchEntryMag(entry, "zero", w) - sketchEntryMag(entry, "zero", w0);
+                    p += sketchEntryPhase(entry, "zero", w) - sketchEntryPhase(entry, "zero", w0);
                 });
-                state.poles.forEach((entry) => {
-                    const wc = characteristicFrequency(entry);
-                    const order = entry.im > EPS ? 2 : 1;
-                    m += firstOrderSketchTerm(w, wc, -1, order);
-                    p += phaseSketchTerm(w, wc, -1, order);
-                    if (entry.im > EPS) {
-                        const q = qOf(entry);
-                        if (Number.isFinite(q) && q > 0.7) {
-                            const bell = Math.exp(-Math.pow(Math.log10(w / wc) / 0.18, 2));
-                            m += 20 * Math.log10(q) * bell;
-                        }
-                    }
+                poleEntries.forEach((entry) => {
+                    m += sketchEntryMag(entry, "pole", w) - sketchEntryMag(entry, "pole", w0);
+                    p += sketchEntryPhase(entry, "pole", w) - sketchEntryPhase(entry, "pole", w0);
                 });
                 mag.push(Number.isFinite(m) ? m : exact.mag[i]);
                 phase.push(Number.isFinite(p) ? p : exact.phase[i]);
@@ -570,9 +630,7 @@
             $("wMin").disabled = $("wMax").disabled = r.autoFreq;
             $("magMin").disabled = $("magMax").disabled = r.autoMag;
             $("phaseMin").disabled = $("phaseMax").disabled = r.autoPhase;
-            $("autoFreq").checked = r.autoFreq;
-            $("autoMag").checked = r.autoMag;
-            $("autoPhase").checked = r.autoPhase;
+            $("autoBode").checked = r.autoFreq && r.autoMag && r.autoPhase;
         }
 
         function svgEl(name, attrs = {}) {
@@ -641,8 +699,17 @@
             svg.appendChild(path);
         }
 
+        function svgViewport(svg, fallbackWidth, fallbackHeight) {
+            const rect = svg.getBoundingClientRect();
+            const width = Math.max(1, Math.round(rect.width || fallbackWidth));
+            const height = Math.max(1, Math.round(rect.height || fallbackHeight));
+            svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+            return { width, height };
+        }
+
         function drawBodePlot(svg, width, height, freqs, series, yMin, yMax, label) {
             svg.innerHTML = "";
+            svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
             const xMin = state.ranges.wMin;
             const xMax = state.ranges.wMax;
             const logMin = Math.log10(xMin);
@@ -653,26 +720,32 @@
             series.forEach((s) => drawSeries(svg, s.data.map((y, i) => ({ x: freqs[i], y })), xFn, yFn, s.color, s.width, s.opacity, s.dash));
         }
 
-        function selectedContribution(freqs, full) {
+        function bodeExactFor(freqs, zeroEntries, poleEntries, k) {
+            const rawPhase = [];
+            const mag = freqs.map((w) => {
+                const h = hAt(w, zeroEntries, poleEntries, k);
+                rawPhase.push(cArg(h) * 180 / Math.PI);
+                return 20 * Math.log10(Math.max(cAbs(h), 1e-18));
+            });
+            return { mag, phase: unwrap(rawPhase) };
+        }
+
+        function selectedContribution(freqs, full, mode) {
             const entry = selectedEntry();
             if (!entry) return null;
             const zeroEntries = entry.kind === "zero" ? [entry] : [];
             const poleEntries = entry.kind === "pole" ? [entry] : [];
-            const mag = [];
-            const rawPhase = [];
-            freqs.forEach((w) => {
-                const h = hAt(w, zeroEntries, poleEntries, 1);
-                mag.push(20 * Math.log10(Math.max(cAbs(h), 1e-18)));
-                rawPhase.push(cArg(h) * 180 / Math.PI);
-            });
-            const phase = unwrap(rawPhase);
+            const exact = bodeExactFor(freqs, zeroEntries, poleEntries, 1);
+            const contribution = mode === "sketch"
+                ? bodeSketch(freqs, exact, zeroEntries, poleEntries, 1)
+                : exact;
             const wc = characteristicFrequency(entry);
             const idx = freqs.reduce((best, w, i) => Math.abs(Math.log(w / wc)) < Math.abs(Math.log(freqs[best] / wc)) ? i : best, 0);
-            const magOffset = full.mag[idx] - mag[idx];
-            const phaseOffset = full.phase[idx] - phase[idx];
+            const magOffset = full.mag[idx] - contribution.mag[idx];
+            const phaseOffset = full.phase[idx] - contribution.phase[idx];
             return {
-                mag: mag.map((v) => v + magOffset),
-                phase: phase.map((v) => v + phaseOffset)
+                mag: contribution.mag.map((v) => v + magOffset),
+                phase: contribution.phase.map((v) => v + phaseOffset)
             };
         }
 
@@ -749,8 +822,7 @@
 
         function drawTimePlot(svg, data, yMin, yMax, color, label) {
             svg.innerHTML = "";
-            const width = Number(svg.viewBox.baseVal.width) || 700;
-            const height = Number(svg.viewBox.baseVal.height) || 260;
+            const { width, height } = svgViewport(svg, 700, 260);
             const tMin = label === "Impulse" ? state.ranges.impulseTMin : state.ranges.stepTMin;
             const tMax = label === "Impulse" ? state.ranges.impulseTMax : state.ranges.stepTMax;
             const xFn = (x) => PLOT.left + (x - tMin) / (tMax - tMin) * (width - PLOT.left - PLOT.right);
@@ -1155,31 +1227,34 @@
             const bode = currentBode();
             updateRangeInputs(bode.active);
             const selected = selectedEntry();
-            const contribution = selectedContribution(bode.freqs, bode.exact);
             $("contributionHint").classList.toggle("hidden", !selected);
             $("contributionHint").classList.toggle("flex", !!selected);
             if (selected) {
                 const label = entryLabel(selected.kind, indexEntries(selected.kind).indexOf(selected), selected);
                 $("contributionText").textContent = `展示选中对象贡献 (${label})`;
             }
+            const fullReference = state.mode === "sketch" ? bode.active : bode.exact;
+            const contribution = selectedContribution(bode.freqs, fullReference, state.mode);
             const magSeries = [];
             const phaseSeries = [];
             if (selected && contribution) {
-                magSeries.push({ data: bode.exact.mag, color: "#94a3b8", width: 2, opacity: 0.45 });
-                phaseSeries.push({ data: bode.exact.phase, color: "#94a3b8", width: 2, opacity: 0.45 });
+                magSeries.push({ data: fullReference.mag, color: "#94a3b8", width: 2, opacity: 0.45 });
+                phaseSeries.push({ data: fullReference.phase, color: "#94a3b8", width: 2, opacity: 0.45 });
                 magSeries.push({ data: contribution.mag, color: "#2563eb", width: 3, opacity: 1 });
                 phaseSeries.push({ data: contribution.phase, color: "#ea580c", width: 3, opacity: 1 });
             } else if (state.mode === "sketch") {
                 magSeries.push({ data: bode.exact.mag, color: "#94a3b8", width: 2, opacity: 0.4 });
                 phaseSeries.push({ data: bode.exact.phase, color: "#94a3b8", width: 2, opacity: 0.4 });
-                magSeries.push({ data: bode.active.mag, color: "#2563eb", width: 3, opacity: 1, dash: "8 5" });
-                phaseSeries.push({ data: bode.active.phase, color: "#ea580c", width: 3, opacity: 1, dash: "8 5" });
+                magSeries.push({ data: bode.active.mag, color: "#2563eb", width: 3, opacity: 1 });
+                phaseSeries.push({ data: bode.active.phase, color: "#ea580c", width: 3, opacity: 1 });
             } else {
                 magSeries.push({ data: bode.active.mag, color: "#2563eb", width: 2.5, opacity: 1 });
                 phaseSeries.push({ data: bode.active.phase, color: "#ea580c", width: 2.5, opacity: 1 });
             }
-            drawBodePlot($("magPlot"), 800, 240, bode.freqs, magSeries, state.ranges.magMin, state.ranges.magMax, "Magnitude dB");
-            drawBodePlot($("phasePlot"), 800, 240, bode.freqs, phaseSeries, state.ranges.phaseMin, state.ranges.phaseMax, "Phase deg");
+            const magViewport = svgViewport($("magPlot"), 800, 240);
+            const phaseViewport = svgViewport($("phasePlot"), 800, 240);
+            drawBodePlot($("magPlot"), magViewport.width, magViewport.height, bode.freqs, magSeries, state.ranges.magMin, state.ranges.magMax, "Magnitude dB");
+            drawBodePlot($("phasePlot"), phaseViewport.width, phaseViewport.height, bode.freqs, phaseSeries, state.ranges.phaseMin, state.ranges.phaseMax, "Phase deg");
 
             const impulse = plotTimeResponse("impulse");
             const step = plotTimeResponse("step");
@@ -1273,7 +1348,13 @@
             $("wRef").addEventListener("change", (e) => { const v = Number(e.target.value); if (v > 0) state.wRef = v; render(); });
             $("gRef").addEventListener("change", (e) => { const v = Number(e.target.value); if (Number.isFinite(v)) state.gRef = v; render(); });
             $("gainUnit").addEventListener("change", (e) => { state.gainUnit = e.target.value; render(); });
-            ["autoFreq", "autoMag", "autoPhase", "autoTimeImpulse", "autoTimeStep"].forEach((id) => {
+            $("autoBode").addEventListener("change", (e) => {
+                state.ranges.autoFreq = e.target.checked;
+                state.ranges.autoMag = e.target.checked;
+                state.ranges.autoPhase = e.target.checked;
+                render();
+            });
+            ["autoTimeImpulse", "autoTimeStep"].forEach((id) => {
                 $(id).addEventListener("change", (e) => {
                     state.ranges[id] = e.target.checked;
                     render();
