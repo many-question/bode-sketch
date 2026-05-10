@@ -276,7 +276,6 @@
         "use strict";
 
         const EPS = 1e-9;
-        const SKETCH_EVENT_TOL = 1e-10;
         const PLOT = { left: 52, right: 18, top: 18, bottom: 36 };
         const state = {
             zeros: [],
@@ -549,9 +548,14 @@
             return sign * order * 90 * Math.log10(w / lo) / Math.log10(hi / lo);
         }
 
+        function sketchQ(entry) {
+            const q = qOf(entry);
+            return entry.im > EPS && Number.isFinite(q) ? q : 0.5;
+        }
+
         function sketchBounds(entry) {
             const wc = characteristicFrequency(entry);
-            const q = entry.im > EPS && Number.isFinite(qOf(entry)) ? qOf(entry) : 0.5;
+            const q = sketchQ(entry);
             const decades = 1 / (2 * Math.max(q, EPS));
             return {
                 lo: Math.max(wc * Math.pow(10, -decades), EPS),
@@ -559,10 +563,6 @@
                 hi: Math.max(wc * Math.pow(10, decades), EPS),
                 q
             };
-        }
-
-        function isSameFrequency(a, b) {
-            return Math.abs(Math.log10(Math.max(a, EPS) / Math.max(b, EPS))) < SKETCH_EVENT_TOL;
         }
 
         function sketchEntryMag(entry, kind, w) {
@@ -581,70 +581,95 @@
         function sketchEntryPhase(entry, kind, w) {
             const wc = characteristicFrequency(entry);
             const order = entry.im > EPS ? 2 : 1;
-            const q = entry.im > EPS && Number.isFinite(qOf(entry)) ? qOf(entry) : 0.5;
+            const q = sketchQ(entry);
             const rootDirection = entry.re <= 0 ? 1 : -1;
             const transferDirection = kind === "zero" ? rootDirection : -rootDirection;
             return phaseSketchTerm(w, wc, transferDirection, order, q);
         }
 
-        function sketchVertices(zeroEntries = state.zeros, poleEntries = state.poles, wMin = state.ranges.wMin, wMax = state.ranges.wMax) {
-            const events = [
-                { w: wMin, type: "endpoint" },
-                { w: wMax, type: "endpoint" }
-            ];
+        function interpolateLogSegment(w, w0, y0, w1, y1) {
+            const x0 = Math.log10(w0);
+            const x1 = Math.log10(w1);
+            const t = (Math.log10(w) - x0) / Math.max(x1 - x0, EPS);
+            return y0 + (y1 - y0) * Math.max(0, Math.min(1, t));
+        }
+
+        function sketchEntryMagCorner(entry, kind, w, includePeaking = true) {
+            if (!includePeaking || entry.im <= EPS) return sketchEntryMag(entry, kind, w);
+            const bounds = sketchBounds(entry);
+            const lowMag = sketchEntryMag(entry, kind, bounds.lo);
+            const centerMag = sketchEntryMag(entry, kind, bounds.w0) + sketchPeakDb(entry, kind);
+            const highMag = sketchEntryMag(entry, kind, bounds.hi);
+            if (w <= bounds.lo) return sketchEntryMag(entry, kind, w);
+            if (w <= bounds.w0) return interpolateLogSegment(w, bounds.lo, lowMag, bounds.w0, centerMag);
+            if (w <= bounds.hi) return interpolateLogSegment(w, bounds.w0, centerMag, bounds.hi, highMag);
+            return sketchEntryMag(entry, kind, w);
+        }
+
+        function sketchEntryCorners(entry, kind, freqs, options = {}) {
+            const includePeaking = options.includePeaking !== false;
+            return {
+                entry,
+                kind,
+                mag: freqs.map((w) => sketchEntryMagCorner(entry, kind, w, includePeaking)),
+                phase: freqs.map((w) => sketchEntryPhase(entry, kind, w))
+            };
+        }
+
+        function uniqueSortedFrequencies(freqs) {
+            const sorted = freqs
+                .filter((w) => Number.isFinite(w) && w > 0)
+                .sort((a, b) => a - b);
+            const out = [];
+            sorted.forEach((w) => {
+                if (!out.length || w !== out[out.length - 1]) out.push(w);
+            });
+            return out;
+        }
+
+        function sketchCornerFrequencies(zeroEntries = state.zeros, poleEntries = state.poles, wMin = state.ranges.wMin, wMax = state.ranges.wMax) {
+            const corners = [];
             [
                 ...zeroEntries.map((entry) => ({ entry, kind: "zero" })),
                 ...poleEntries.map((entry) => ({ entry, kind: "pole" }))
-            ].forEach(({ entry, kind }) => {
+            ].forEach(({ entry }) => {
                 const bounds = sketchBounds(entry);
-                events.push(
-                    { w: bounds.lo, type: "lo", entry, kind },
-                    { w: bounds.w0, type: "center", entry, kind },
-                    { w: bounds.hi, type: "hi", entry, kind }
-                );
+                if (entry.im > EPS) corners.push(bounds.lo, bounds.w0, bounds.hi);
+                else corners.push(bounds.w0);
             });
-            const sorted = events
-                .filter((event) => Number.isFinite(event.w) && event.w > 0 && event.w >= wMin / 1.000001 && event.w <= wMax * 1.000001)
-                .sort((a, b) => a.w - b.w);
-            const vertices = [];
-            sorted.forEach((event) => {
-                const vertex = vertices[vertices.length - 1];
-                if (!vertex || !isSameFrequency(event.w, vertex.w)) vertices.push({ w: event.w, events: [event] });
-                else vertex.events.push(event);
-            });
-            return vertices;
+            const inner = uniqueSortedFrequencies(corners)
+                .filter((w) => w > wMin && w < wMax);
+            return [wMin, ...inner, wMax];
         }
 
         function sketchFrequencies(zeroEntries = state.zeros, poleEntries = state.poles, wMin = state.ranges.wMin, wMax = state.ranges.wMax) {
-            return sketchVertices(zeroEntries, poleEntries, wMin, wMax).map((vertex) => vertex.w);
+            return sketchCornerFrequencies(zeroEntries, poleEntries, wMin, wMax);
         }
 
         function bodeSketch(freqs, exact, zeroEntries = state.zeros, poleEntries = state.poles, k = gainK(), options = {}) {
+            if (!freqs.length) return { mag: [], phase: [] };
             const anchorW = options.anchorW || freqs[0];
             const anchor = 20 * Math.log10(Math.max(cAbs(hAt(anchorW, zeroEntries, poleEntries, k)), 1e-18));
             const startPhase = cArg(hAt(anchorW, zeroEntries, poleEntries, k)) * 180 / Math.PI;
             const includePeaking = options.includePeaking !== false;
-            const vertices = options.vertices || freqs.map((w) => ({ w, events: [] }));
+            const entries = [
+                ...zeroEntries.map((entry) => ({ entry, kind: "zero" })),
+                ...poleEntries.map((entry) => ({ entry, kind: "pole" }))
+            ];
+            const components = entries.map(({ entry, kind }) => sketchEntryCorners(entry, kind, freqs, { includePeaking }));
+            const anchorTerms = entries.map(({ entry, kind }) => ({
+                mag: sketchEntryMagCorner(entry, kind, anchorW, includePeaking),
+                phase: sketchEntryPhase(entry, kind, anchorW)
+            }));
             const mag = [];
             const phase = [];
             freqs.forEach((w, i) => {
                 let m = anchor;
                 let p = startPhase;
-                zeroEntries.forEach((entry) => {
-                    m += sketchEntryMag(entry, "zero", w) - sketchEntryMag(entry, "zero", anchorW);
-                    p += sketchEntryPhase(entry, "zero", w) - sketchEntryPhase(entry, "zero", anchorW);
+                components.forEach((component, componentIndex) => {
+                    m += component.mag[i] - anchorTerms[componentIndex].mag;
+                    p += component.phase[i] - anchorTerms[componentIndex].phase;
                 });
-                poleEntries.forEach((entry) => {
-                    m += sketchEntryMag(entry, "pole", w) - sketchEntryMag(entry, "pole", anchorW);
-                    p += sketchEntryPhase(entry, "pole", w) - sketchEntryPhase(entry, "pole", anchorW);
-                });
-                if (includePeaking) {
-                    vertices[i].events
-                        .filter((event) => event.type === "center")
-                        .forEach((event) => {
-                            m += sketchPeakDb(event.entry, event.kind);
-                        });
-                }
                 mag.push(Number.isFinite(m) ? m : exact.mag[i]);
                 phase.push(Number.isFinite(p) ? p : exact.phase[i]);
             });
@@ -867,8 +892,7 @@
             const contribution = mode === "sketch"
                 ? bodeSketch(freqs, exact, zeroEntries, poleEntries, 1, {
                     includePeaking: options.includePeaking !== false,
-                    anchorW: options.anchorW,
-                    vertices: options.vertices
+                    anchorW: options.anchorW
                 })
                 : exact;
             const wc = characteristicFrequency(entry);
@@ -889,16 +913,15 @@
             if (!(r.wMin > 0) || !(r.wMax > r.wMin)) [r.wMin, r.wMax] = [0.1, 1000];
             const exactFreqs = logspace(r.wMin, r.wMax, 260);
             const exact = bodeExact(exactFreqs);
-            const sketchVerts = sketchVertices(state.zeros, state.poles, r.wMin, r.wMax);
-            const sketchFreqs = sketchVerts.map((vertex) => vertex.w);
+            const sketchFreqs = sketchFrequencies(state.zeros, state.poles, r.wMin, r.wMax);
             const exactAtSketch = bodeExactFor(sketchFreqs, state.zeros, state.poles, gainK());
             const activeFreqs = state.mode === "sketch" ? sketchFreqs : exactFreqs;
-            const active = state.mode === "sketch" ? bodeSketch(sketchFreqs, exactAtSketch, state.zeros, state.poles, gainK(), { vertices: sketchVerts }) : exact;
+            const active = state.mode === "sketch" ? bodeSketch(sketchFreqs, exactAtSketch, state.zeros, state.poles, gainK()) : exact;
             if (r.autoMag) [r.magMin, r.magMax] = niceRange([...exact.mag, ...active.mag], 10);
             if (r.autoPhase) [r.phaseMin, r.phaseMax] = niceRange([...exact.phase, ...active.phase], 10);
             if (!validIncreasing(r.magMin, r.magMax)) [r.magMin, r.magMax] = niceRange([...exact.mag, ...active.mag], 10);
             if (!validIncreasing(r.phaseMin, r.phaseMax)) [r.phaseMin, r.phaseMax] = niceRange([...exact.phase, ...active.phase], 10);
-            return { freqs: activeFreqs, exactFreqs, activeFreqs, sketchFreqs, sketchVerts, exact, active };
+            return { freqs: activeFreqs, exactFreqs, activeFreqs, sketchFreqs, exact, active };
         }
 
         function plotTimeResponse(kind) {
@@ -1373,26 +1396,12 @@
             }
             const fullReference = state.mode === "sketch" ? bode.active : bode.exact;
             const fullFreqs = state.mode === "sketch" ? bode.activeFreqs : bode.exactFreqs;
-            const selectedZeroEntries = selected && selected.kind === "zero" ? [selected] : [];
-            const selectedPoleEntries = selected && selected.kind === "pole" ? [selected] : [];
-            const contributionVerts = selected && state.mode === "sketch"
-                ? sketchVertices(selectedZeroEntries, selectedPoleEntries, state.ranges.wMin, state.ranges.wMax)
-                : null;
-            const contributionFreqs = contributionVerts ? contributionVerts.map((vertex) => vertex.w) : bode.exactFreqs;
-            const contribution = selected ? selectedContribution(contributionFreqs, fullReference, fullFreqs, state.mode, { vertices: contributionVerts }) : null;
+            const contributionFreqs = selected && state.mode === "sketch" ? bode.sketchFreqs : bode.exactFreqs;
+            const contribution = selected ? selectedContribution(contributionFreqs, fullReference, fullFreqs, state.mode) : null;
             const selectedBounds = selected && selected.im > EPS ? sketchBounds(selected) : null;
-            const selectedNoPeakingVerts = selectedBounds
-                ? [
-                    { w: selectedBounds.lo, events: [{ w: selectedBounds.lo, type: "lo", entry: selected, kind: selected.kind }] },
-                    { w: selectedBounds.w0, events: [{ w: selectedBounds.w0, type: "center", entry: selected, kind: selected.kind }] },
-                    { w: selectedBounds.hi, events: [{ w: selectedBounds.hi, type: "hi", entry: selected, kind: selected.kind }] }
-                ].filter((vertex) => vertex.w >= state.ranges.wMin && vertex.w <= state.ranges.wMax)
-                : [];
-            const selectedNoPeakingFreqs = selectedNoPeakingVerts.map((vertex) => vertex.w);
-            const noPeakingContribution = selected && state.mode === "sketch" && selected.im > EPS && contribution && selectedNoPeakingFreqs.length
-                ? selectedContribution(selectedNoPeakingFreqs, fullReference, fullFreqs, state.mode, {
+            const noPeakingContribution = selected && state.mode === "sketch" && selected.im > EPS && contribution
+                ? selectedContribution(contribution.freqs, fullReference, fullFreqs, state.mode, {
                     includePeaking: false,
-                    vertices: selectedNoPeakingVerts,
                     anchorW: contribution.freqs[0],
                     magOffset: contribution.magOffset,
                     phaseOffset: contribution.phaseOffset
