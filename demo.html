@@ -108,10 +108,10 @@
                 </div>
                 <div class="flex-1 p-4 flex flex-col gap-3">
                     <div class="flex-1 min-h-[180px] relative border border-slate-200 rounded bg-white plot-grid">
-                        <svg id="magPlot" class="plot-svg absolute inset-0 w-full h-full" viewBox="0 0 800 240"></svg>
+                        <svg id="magPlot" class="plot-svg tap-target absolute inset-0 w-full h-full" viewBox="0 0 800 240"></svg>
                     </div>
                     <div class="flex-1 min-h-[180px] relative border border-slate-200 rounded bg-white plot-grid">
-                        <svg id="phasePlot" class="plot-svg absolute inset-0 w-full h-full" viewBox="0 0 800 240"></svg>
+                        <svg id="phasePlot" class="plot-svg tap-target absolute inset-0 w-full h-full" viewBox="0 0 800 240"></svg>
                     </div>
                 </div>
             </section>
@@ -299,6 +299,8 @@
             },
             drag: null,
             pzDragMapper: null,
+            bodeCursorW: null,
+            bodeCursorPointerId: null,
             nextId: 1
         };
 
@@ -324,6 +326,8 @@
             state.wRef = 1;
             state.gRef = 20;
             state.gainUnit = "db-pos";
+            state.bodeCursorW = null;
+            state.bodeCursorPointerId = null;
             Object.assign(state.ranges, {
                 autoFreq: true, autoMag: true, autoPhase: true,
                 autoTimeImpulse: true, autoTimeStep: true
@@ -431,6 +435,10 @@
             const ax = Math.abs(x);
             if (ax >= 10000 || ax < 0.001) return x.toExponential(2);
             return Number(x.toFixed(digits)).toString();
+        }
+
+        function clamp(value, min, max) {
+            return Math.max(min, Math.min(max, value));
         }
 
         function sTerm(power = "", kind = null) {
@@ -874,6 +882,80 @@
                     svg.appendChild(text);
                     return;
                 }
+                if (s.kind === "cursor") {
+                    const x = xFn(s.x);
+                    const y = yFn(s.y);
+                    const color = s.color || "#ef4444";
+                    const plotRight = width - PLOT.right;
+                    const plotBottom = height - PLOT.bottom;
+                    svg.appendChild(svgEl("line", {
+                        x1: x,
+                        x2: x,
+                        y1: PLOT.top,
+                        y2: plotBottom,
+                        stroke: color,
+                        "stroke-width": s.width || 1.25,
+                        opacity: s.opacity || 0.95
+                    }));
+                    svg.appendChild(svgEl("circle", {
+                        cx: x,
+                        cy: y,
+                        r: s.r || 4,
+                        fill: color
+                    }));
+                    const lines = s.lines || [];
+                    if (lines.length) {
+                        const lineHeight = 13;
+                        const textWidth = Math.max(...lines.map((line) => line.length)) * 6.2 + 10;
+                        const textX = clamp(x + 10, PLOT.left + 6, plotRight - textWidth);
+                        const textY = clamp(y - (lines.length - 1) * lineHeight / 2, PLOT.top + 12, plotBottom - 8 - (lines.length - 1) * lineHeight);
+                        svg.appendChild(svgEl("rect", {
+                            x: textX - 5,
+                            y: textY - 11,
+                            width: textWidth,
+                            height: lines.length * lineHeight + 4,
+                            rx: 3,
+                            fill: "white",
+                            opacity: 0.86
+                        }));
+                        const text = svgEl("text", {
+                            x: textX,
+                            y: textY,
+                            "font-size": 10,
+                            fill: color
+                        });
+                        lines.forEach((line, i) => {
+                            const tspan = svgEl("tspan", { x: textX, dy: i ? lineHeight : 0 });
+                            tspan.textContent = line;
+                            text.appendChild(tspan);
+                        });
+                        svg.appendChild(text);
+                    }
+                    if (s.freqLabel) {
+                        const freqWidth = s.freqLabel.length * 6.2 + 10;
+                        const freqX = clamp(x, PLOT.left + freqWidth / 2 + 4, plotRight - freqWidth / 2 - 4);
+                        const freqY = plotBottom - 6;
+                        svg.appendChild(svgEl("rect", {
+                            x: freqX - freqWidth / 2,
+                            y: freqY - 11,
+                            width: freqWidth,
+                            height: 15,
+                            rx: 3,
+                            fill: "white",
+                            opacity: 0.86
+                        }));
+                        const freqText = svgEl("text", {
+                            x: freqX,
+                            y: freqY,
+                            "font-size": 10,
+                            fill: color,
+                            "text-anchor": "middle"
+                        });
+                        freqText.textContent = s.freqLabel;
+                        svg.appendChild(freqText);
+                    }
+                    return;
+                }
                 if (s.kind === "point") {
                     const x = xFn(s.x);
                     const y = yFn(s.y);
@@ -924,6 +1006,58 @@
                 }
             }
             return values[values.length - 1];
+        }
+
+        function slopePerDecade(freqs, values, x) {
+            if (!freqs || !values || freqs.length < 2 || values.length < 2) return NaN;
+            let index = 1;
+            if (x >= freqs[freqs.length - 1]) {
+                index = freqs.length - 1;
+            } else {
+                while (index < freqs.length && x > freqs[index]) index++;
+            }
+            const x0 = Math.log10(freqs[index - 1]);
+            const x1 = Math.log10(freqs[index]);
+            const dx = x1 - x0;
+            if (!(dx > EPS)) return NaN;
+            return (values[index] - values[index - 1]) / dx;
+        }
+
+        function bodeCursorSnapshot(source) {
+            if (!Number.isFinite(state.bodeCursorW)) return null;
+            if (!source || !source.freqs || source.freqs.length < 2) return null;
+            const w = clamp(state.bodeCursorW, state.ranges.wMin, state.ranges.wMax);
+            state.bodeCursorW = w;
+            const freqs = source.freqs;
+            const mag = interpolateSeries(freqs, source.mag, w);
+            const phase = interpolateSeries(freqs, source.phase, w);
+            return {
+                w,
+                mag,
+                phase,
+                magSlope: slopePerDecade(freqs, source.mag, w),
+                phaseSlope: slopePerDecade(freqs, source.phase, w)
+            };
+        }
+
+        function appendBodeCursorSeries(magSeries, phaseSeries, cursor) {
+            if (!cursor) return;
+            const base = {
+                kind: "cursor",
+                x: cursor.w,
+                color: "#ef4444",
+                freqLabel: `ω=${fmt(cursor.w, 5)} rad/s`
+            };
+            magSeries.push({
+                ...base,
+                y: cursor.mag,
+                lines: [`幅度 ${fmt(cursor.mag, 4)} dB`, `斜率 ${fmt(cursor.magSlope, 4)} dB/dec`]
+            });
+            phaseSeries.push({
+                ...base,
+                y: cursor.phase,
+                lines: [`相位 ${fmt(cursor.phase, 4)} deg`, `斜率 ${fmt(cursor.phaseSlope, 4)} deg/dec`]
+            });
         }
 
         function selectedContribution(freqs, full, fullFreqs, mode, options = {}) {
@@ -1534,6 +1668,11 @@
                     $("phaseMax").value = fmt(state.ranges.phaseMax, 5);
                 }
             }
+            const cursorSource = contribution
+                ? { freqs: contribution.freqs, mag: contribution.mag, phase: contribution.phase }
+                : { freqs: bode.activeFreqs, mag: bode.active.mag, phase: bode.active.phase };
+            const cursor = bodeCursorSnapshot(cursorSource);
+            appendBodeCursorSeries(magSeries, phaseSeries, cursor);
             const magViewport = svgViewport($("magPlot"), 800, 240);
             const phaseViewport = svgViewport($("phasePlot"), 800, 240);
             drawBodePlot($("magPlot"), magViewport.width, magViewport.height, bode.freqs, magSeries, state.ranges.magMin, state.ranges.magMax, "Magnitude dB");
@@ -1622,6 +1761,27 @@
             };
         }
 
+        function pointerToBodeFrequency(evt, svg) {
+            const rect = svg.getBoundingClientRect();
+            if (!(rect.width > 0)) return null;
+            const viewBox = svg.viewBox.baseVal;
+            const width = viewBox && viewBox.width ? viewBox.width : 800;
+            const x = (evt.clientX - rect.left) / rect.width * width;
+            const plotWidth = Math.max(1, width - PLOT.left - PLOT.right);
+            const t = clamp((x - PLOT.left) / plotWidth, 0, 1);
+            const wMin = state.ranges.wMin;
+            const wMax = state.ranges.wMax;
+            if (!(wMin > 0) || !(wMax > wMin)) return null;
+            return Math.pow(10, Math.log10(wMin) + t * (Math.log10(wMax) - Math.log10(wMin)));
+        }
+
+        function setBodeCursorFromPointer(evt, svg) {
+            const w = pointerToBodeFrequency(evt, svg);
+            if (!Number.isFinite(w)) return;
+            state.bodeCursorW = w;
+            render();
+        }
+
         function bindEvents() {
             $("resetExample").addEventListener("click", resetExample);
             $("modeExact").addEventListener("click", () => { state.mode = "exact"; render(); });
@@ -1667,6 +1827,15 @@
             $("pzMap").addEventListener("pointerdown", pzPointerDown);
             $("pzMap").addEventListener("pointermove", pzPointerMove);
             window.addEventListener("pointerup", pzPointerUp);
+            window.addEventListener("pointerup", bodePointerUp);
+            window.addEventListener("pointercancel", bodePointerUp);
+            ["magPlot", "phasePlot"].forEach((id) => {
+                const plot = $(id);
+                plot.addEventListener("pointerdown", bodePointerDown);
+                plot.addEventListener("pointermove", bodePointerMove);
+                plot.addEventListener("pointerup", bodePointerUp);
+                plot.addEventListener("pointercancel", bodePointerUp);
+            });
         }
 
         function listClick(e) {
@@ -1713,6 +1882,28 @@
         function stopInputPointerEvent(e) {
             if (!e.target.closest(".entry-input")) return;
             e.stopPropagation();
+        }
+
+        function bodePointerDown(e) {
+            e.preventDefault();
+            state.bodeCursorPointerId = e.pointerId;
+            e.currentTarget.setPointerCapture(e.pointerId);
+            setBodeCursorFromPointer(e, e.currentTarget);
+        }
+
+        function bodePointerMove(e) {
+            if (state.bodeCursorPointerId !== e.pointerId) return;
+            setBodeCursorFromPointer(e, e.currentTarget);
+        }
+
+        function bodePointerUp(e) {
+            if (state.bodeCursorPointerId !== e.pointerId) return;
+            state.bodeCursorPointerId = null;
+            state.bodeCursorW = null;
+            if (e.currentTarget.hasPointerCapture && e.currentTarget.hasPointerCapture(e.pointerId)) {
+                e.currentTarget.releasePointerCapture(e.pointerId);
+            }
+            render();
         }
 
         function pzPointerDown(e) {
