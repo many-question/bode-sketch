@@ -281,6 +281,7 @@
 
         const EPS = 1e-9;
         const PLOT = { left: 52, right: 18, top: 18, bottom: 36 };
+        const BODE_POINT_COUNT = 420;
         const state = {
             zeros: [],
             poles: [],
@@ -299,6 +300,7 @@
             },
             drag: null,
             pzDragMapper: null,
+            pzAddMode: null,
             bodeCursorW: null,
             bodeCursorPointerId: null,
             nextId: 1
@@ -323,6 +325,7 @@
             state.selected = { kind: "zero", id: state.zeros[1].id };
             state.mode = "sketch";
             state.pzLogScale = false;
+            state.pzAddMode = null;
             state.wRef = 1;
             state.gRef = 20;
             state.gainUnit = "db-pos";
@@ -1099,7 +1102,7 @@
             const r = state.ranges;
             if (r.autoFreq) [r.wMin, r.wMax] = autoFrequencyRange();
             if (!(r.wMin > 0) || !(r.wMax > r.wMin)) [r.wMin, r.wMax] = [0.1, 1000];
-            const exactFreqs = logspace(r.wMin, r.wMax, 260);
+            const exactFreqs = logspace(r.wMin, r.wMax, BODE_POINT_COUNT);
             const exact = bodeExact(exactFreqs);
             const sketchFreqs = sketchFrequencies(state.zeros, state.poles, r.wMin, r.wMax);
             const exactAtSketch = bodeExactFor(sketchFreqs, state.zeros, state.poles, gainK());
@@ -1334,6 +1337,7 @@
         function renderPzMap() {
             const svg = $("pzMap");
             svg.innerHTML = "";
+            svg.style.cursor = state.pzAddMode ? "crosshair" : "";
             const mapper = state.pzDragMapper || pzMapper();
             const { size, center } = mapper;
             svg.appendChild(svgEl("rect", { x: 0, y: 0, width: size / 2, height: size, fill: "#dbeafe", opacity: 0.25 }));
@@ -1517,7 +1521,7 @@
                         "data-id": entry.id,
                         "data-point": pointIndex,
                         transform: `translate(${xFn(entry.re)}, ${yFn(im)})`,
-                        cursor: "grab"
+                        cursor: state.pzAddMode ? "crosshair" : "grab"
                     });
                     g.appendChild(svgEl("circle", { r: 13, fill: "transparent", stroke: "none", "pointer-events": "all" }));
                     if (selected) {
@@ -1534,12 +1538,31 @@
             });
         }
 
+        function pzAddButtonClass(kind) {
+            const active = state.pzAddMode === kind;
+            if (kind === "zero") {
+                return active
+                    ? "bg-green-600 text-white border-green-600 shadow-sm"
+                    : "bg-green-50 text-green-700 border-green-200 hover:bg-green-100";
+            }
+            return active
+                ? "bg-red-600 text-white border-red-600 shadow-sm"
+                : "bg-red-50 text-red-700 border-red-200 hover:bg-red-100";
+        }
+
         function renderSelectedPanel() {
             const entry = selectedEntry();
             const toolbar = $("selectedToolbar");
             if (!entry) {
-                toolbar.classList.add("hidden");
-                $("selectedInfo").textContent = "点击列表或零极点图可选中对象；拖动图中对象可修改位置。";
+                toolbar.classList.remove("hidden");
+                toolbar.innerHTML = `
+                    <button id="pzAddZeroMode" class="text-xs border rounded px-2 py-0.5 transition-colors ${pzAddButtonClass("zero")}">增加零点</button>
+                    <button id="pzAddPoleMode" class="text-xs border rounded px-2 py-0.5 transition-colors ${pzAddButtonClass("pole")}">增加极点</button>`;
+                $("selectedInfo").textContent = state.pzAddMode
+                    ? `点击零极点图添加一个${state.pzAddMode === "zero" ? "零点" : "极点"}。`
+                    : "点击列表或零极点图可选中对象；拖动图中对象可修改位置。";
+                $("pzAddZeroMode").onclick = () => togglePzAddMode("zero");
+                $("pzAddPoleMode").onclick = () => togglePzAddMode("pole");
                 return;
             }
             const q = qOf(entry);
@@ -1693,11 +1716,31 @@
             renderPlots();
         }
 
+        function togglePzAddMode(kind) {
+            state.selected = null;
+            state.drag = null;
+            state.pzDragMapper = null;
+            state.pzAddMode = state.pzAddMode === kind ? null : kind;
+            render();
+        }
+
         function addEntry(kind) {
             const list = kind === "zero" ? state.zeros : state.poles;
             const entry = newEntry(kind, kind === "zero" ? -10 : -1, 0);
             list.push(entry);
+            state.pzAddMode = null;
             state.selected = { kind, id: entry.id };
+            render();
+        }
+
+        function addEntryAt(kind, pos) {
+            if (!pos || !Number.isFinite(pos.re) || !Number.isFinite(pos.im)) return;
+            const list = kind === "zero" ? state.zeros : state.poles;
+            const im = Math.abs(pos.im);
+            const isReal = im <= EPS || Math.abs(pos.re) / Math.max(im, EPS) > 20;
+            list.push(newEntry(kind, pos.re, isReal ? 0 : im));
+            state.selected = null;
+            state.pzAddMode = null;
             render();
         }
 
@@ -1705,6 +1748,7 @@
             const list = kind === "zero" ? state.zeros : state.poles;
             const index = list.findIndex((entry) => entry.id === id);
             if (index >= 0) list.splice(index, 1);
+            state.pzAddMode = null;
             if (state.selected && state.selected.kind === kind && state.selected.id === id) state.selected = null;
             render();
         }
@@ -1722,6 +1766,7 @@
                 entry.re = sign * w0 / (2 * q);
                 entry.im = Math.sqrt(Math.max(0, w0 * w0 - entry.re * entry.re));
             }
+            state.pzAddMode = null;
             state.selected = { kind, id };
             render();
         }
@@ -1843,10 +1888,12 @@
             const deleteBtn = e.target.closest(".delete-btn");
             const convertBtn = e.target.closest(".convert-btn");
             if (deleteBtn) {
+                state.pzAddMode = null;
                 deleteEntry(deleteBtn.dataset.kind, deleteBtn.dataset.id);
                 return;
             }
             if (convertBtn) {
+                state.pzAddMode = null;
                 convertEntry(convertBtn.dataset.kind, convertBtn.dataset.id);
                 return;
             }
@@ -1855,6 +1902,7 @@
                 const alreadySelected = state.selected
                     && state.selected.kind === card.dataset.kind
                     && state.selected.id === card.dataset.id;
+                state.pzAddMode = null;
                 state.selected = alreadySelected ? null : { kind: card.dataset.kind, id: card.dataset.id };
                 render();
             }
@@ -1869,6 +1917,7 @@
         function listFocusIn(e) {
             const input = e.target.closest(".entry-input");
             if (!input) return;
+            state.pzAddMode = null;
             state.selected = { kind: input.dataset.kind, id: input.dataset.id };
         }
 
@@ -1907,13 +1956,20 @@
         }
 
         function pzPointerDown(e) {
+            if (state.pzAddMode) {
+                e.preventDefault();
+                addEntryAt(state.pzAddMode, pointerToPz(e));
+                return;
+            }
             const marker = e.target.closest(".pz-marker");
             if (!marker) {
+                state.pzAddMode = null;
                 state.selected = null;
                 render();
                 return;
             }
             e.preventDefault();
+            state.pzAddMode = null;
             state.selected = { kind: marker.dataset.kind, id: marker.dataset.id };
             state.pzDragMapper = state.pzLogScale ? null : pzMapper();
             state.drag = { kind: marker.dataset.kind, id: marker.dataset.id };
