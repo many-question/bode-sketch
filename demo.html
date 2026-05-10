@@ -57,8 +57,8 @@
                     <div class="flex flex-wrap items-center gap-4">
                         <h2 class="font-medium text-slate-800">波特图 (Bode Plot)</h2>
                         <div class="flex bg-slate-100 p-1 rounded-md border border-slate-200">
-                            <button id="modeExact" class="px-3 py-1 text-xs rounded font-medium">精确模式</button>
                             <button id="modeSketch" class="px-3 py-1 text-xs rounded font-medium">折线草绘</button>
+                            <button id="modeExact" class="px-3 py-1 text-xs rounded font-medium">精确模式</button>
                         </div>
                         <div id="contributionHint" class="hidden bg-blue-50 border border-blue-200 text-blue-700 px-3 py-1 rounded-full text-xs font-medium items-center gap-2">
                             <span id="contributionText"></span>
@@ -285,7 +285,7 @@
             zeros: [],
             poles: [],
             selected: null,
-            mode: "exact",
+            mode: "sketch",
             pzLogScale: false,
             wRef: 1,
             gRef: 20,
@@ -319,7 +319,7 @@
                 newEntry("pole", -5, 31.22)
             ];
             state.selected = { kind: "zero", id: state.zeros[1].id };
-            state.mode = "exact";
+            state.mode = "sketch";
             state.pzLogScale = false;
             state.wRef = 1;
             state.gRef = 20;
@@ -683,6 +683,7 @@
             const freqs = [...state.zeros, ...state.poles]
                 .map(characteristicFrequency)
                 .filter((w) => w > EPS);
+            if (state.wRef > EPS) freqs.push(state.wRef);
             if (!freqs.length) return [0.1, 1000];
             return [Math.max(Math.min(...freqs) / 100, 1e-6), Math.max(...freqs) * 100];
         }
@@ -729,6 +730,22 @@
             return finite.map((p, i) => `${i === 0 ? "M" : "L"} ${xFn(p.x).toFixed(2)} ${yFn(p.y).toFixed(2)}`).join(" ");
         }
 
+        function appendPowerOfTenLabel(text, tick) {
+            const exponent = Math.log10(tick);
+            if (Math.abs(exponent) < 1e-9) {
+                text.textContent = "1";
+                return;
+            }
+            const base = svgEl("tspan");
+            base.textContent = "10";
+            text.appendChild(base);
+            if (Math.abs(exponent - 1) > 1e-9) {
+                const exp = svgEl("tspan", { "baseline-shift": "super", "font-size": 8 });
+                exp.textContent = Math.abs(exponent - Math.round(exponent)) < 1e-9 ? Math.round(exponent) : fmt(exponent, 2);
+                text.appendChild(exp);
+            }
+        }
+
         function drawAxes(svg, width, height, xTicks, yTicks, xLabel, yLabel, xFn, yFn) {
             const plotW = width - PLOT.left - PLOT.right;
             const plotH = height - PLOT.top - PLOT.bottom;
@@ -737,7 +754,7 @@
                 const x = xFn(tick);
                 svg.appendChild(svgEl("line", { x1: x, x2: x, y1: PLOT.top, y2: height - PLOT.bottom, stroke: "#e2e8f0", "stroke-width": 1 }));
                 const text = svgEl("text", { x, y: height - 12, "font-size": 11, fill: "#64748b", "text-anchor": "middle" });
-                text.textContent = fmt(tick, 3);
+                appendPowerOfTenLabel(text, tick);
                 svg.appendChild(text);
             });
             yTicks.forEach((tick) => {
@@ -855,6 +872,29 @@
                     exp.textContent = "1/Q";
                     text.appendChild(exp);
                     svg.appendChild(text);
+                    return;
+                }
+                if (s.kind === "point") {
+                    const x = xFn(s.x);
+                    const y = yFn(s.y);
+                    svg.appendChild(svgEl("circle", {
+                        cx: x,
+                        cy: y,
+                        r: s.r || 4,
+                        fill: s.color || "#2563eb",
+                        opacity: s.opacity || 1
+                    }));
+                    if (s.label) {
+                        const text = svgEl("text", {
+                            x: Math.min(Math.max(x, PLOT.left + 52), width - PLOT.right - 52),
+                            y: Math.max(PLOT.top + 12, y - 9),
+                            "font-size": 10,
+                            fill: s.color || "#2563eb",
+                            "text-anchor": "middle"
+                        });
+                        text.textContent = s.label;
+                        svg.appendChild(text);
+                    }
                     return;
                 }
                 const xs = s.freqs || freqs;
@@ -1432,8 +1472,23 @@
                 : null;
             const magSeries = [];
             const phaseSeries = [];
+            const referenceMagDb = 20 * Math.log10(Math.max(Math.abs(targetGainSigned()), 1e-18));
+            const showReferencePoint = state.wRef >= state.ranges.wMin
+                && state.wRef <= state.ranges.wMax
+                && !(state.mode === "sketch" && selected);
+            const referencePointColor = state.mode === "sketch" || selected ? "#94a3b8" : "#2563eb";
+            const referencePoint = showReferencePoint ? {
+                kind: "point",
+                x: state.wRef,
+                y: referenceMagDb,
+                color: referencePointColor,
+                r: 4,
+                opacity: referencePointColor === "#94a3b8" ? 0.75 : 1,
+                label: `(${fmt(state.wRef, 3)} rad/s, ${fmt(referenceMagDb, 3)} dB)`
+            } : null;
             if (selected && contribution) {
                 magSeries.push({ freqs: fullFreqs, data: fullReference.mag, color: "#94a3b8", width: 2, opacity: 0.45 });
+                if (referencePoint) magSeries.push(referencePoint);
                 phaseSeries.push({ freqs: fullFreqs, data: fullReference.phase, color: "#94a3b8", width: 2, opacity: 0.45 });
                 const w0Line = {
                     kind: "vline",
@@ -1462,9 +1517,11 @@
                 magSeries.push({ freqs: bode.exactFreqs, data: bode.exact.mag, color: "#94a3b8", width: 2, opacity: 0.4 });
                 phaseSeries.push({ freqs: bode.exactFreqs, data: bode.exact.phase, color: "#94a3b8", width: 2, opacity: 0.4 });
                 magSeries.push({ freqs: bode.activeFreqs, data: bode.active.mag, color: "#2563eb", width: 3, opacity: 1 });
+                if (referencePoint) magSeries.push(referencePoint);
                 phaseSeries.push({ freqs: bode.activeFreqs, data: bode.active.phase, color: "#ea580c", width: 3, opacity: 1 });
             } else {
                 magSeries.push({ freqs: bode.activeFreqs, data: bode.active.mag, color: "#2563eb", width: 2.5, opacity: 1 });
+                if (referencePoint) magSeries.push(referencePoint);
                 phaseSeries.push({ freqs: bode.activeFreqs, data: bode.active.phase, color: "#ea580c", width: 2.5, opacity: 1 });
             }
             if (state.ranges.autoPhase) {
