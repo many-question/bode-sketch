@@ -910,6 +910,17 @@
             };
         }
 
+        function singleEntryPhaseRanges(freqs) {
+            const phases = [];
+            state.zeros.forEach((entry) => {
+                phases.push(...bodeExactFor(freqs, [entry], [], 1).phase);
+            });
+            state.poles.forEach((entry) => {
+                phases.push(...bodeExactFor(freqs, [], [entry], 1).phase);
+            });
+            return phases;
+        }
+
         function currentBode() {
             const r = state.ranges;
             if (r.autoFreq) [r.wMin, r.wMax] = autoFrequencyRange();
@@ -921,9 +932,9 @@
             const activeFreqs = state.mode === "sketch" ? sketchFreqs : exactFreqs;
             const active = state.mode === "sketch" ? bodeSketch(sketchFreqs, exactAtSketch, state.zeros, state.poles, gainK()) : exact;
             if (r.autoMag) [r.magMin, r.magMax] = niceRange([...exact.mag, ...active.mag], 10);
-            if (r.autoPhase) [r.phaseMin, r.phaseMax] = niceRange([...exact.phase, ...active.phase], 10);
+            if (r.autoPhase) [r.phaseMin, r.phaseMax] = niceRange([...exact.phase, ...active.phase, ...singleEntryPhaseRanges(exactFreqs)], 10);
             if (!validIncreasing(r.magMin, r.magMax)) [r.magMin, r.magMax] = niceRange([...exact.mag, ...active.mag], 10);
-            if (!validIncreasing(r.phaseMin, r.phaseMax)) [r.phaseMin, r.phaseMax] = niceRange([...exact.phase, ...active.phase], 10);
+            if (!validIncreasing(r.phaseMin, r.phaseMax)) [r.phaseMin, r.phaseMax] = niceRange([...exact.phase, ...active.phase, ...singleEntryPhaseRanges(exactFreqs)], 10);
             return { freqs: activeFreqs, exactFreqs, activeFreqs, sketchFreqs, exact, active };
         }
 
@@ -1455,6 +1466,16 @@
             } else {
                 magSeries.push({ freqs: bode.activeFreqs, data: bode.active.mag, color: "#2563eb", width: 2.5, opacity: 1 });
                 phaseSeries.push({ freqs: bode.activeFreqs, data: bode.active.phase, color: "#ea580c", width: 2.5, opacity: 1 });
+            }
+            if (state.ranges.autoPhase) {
+                const visiblePhaseValues = phaseSeries
+                    .filter((series) => !series.kind && Array.isArray(series.data))
+                    .flatMap((series) => series.data);
+                if (visiblePhaseValues.length) {
+                    [state.ranges.phaseMin, state.ranges.phaseMax] = niceRange(visiblePhaseValues, 10);
+                    $("phaseMin").value = fmt(state.ranges.phaseMin, 5);
+                    $("phaseMax").value = fmt(state.ranges.phaseMax, 5);
+                }
             }
             const magViewport = svgViewport($("magPlot"), 800, 240);
             const phaseViewport = svgViewport($("phasePlot"), 800, 240);
