@@ -49,10 +49,13 @@
             </span>
         </div>
         <div class="ml-auto hidden sm:flex items-center gap-4 text-sm">
+            <button id="exportTf" class="border border-slate-300 text-slate-700 bg-white px-3 py-1.5 rounded-md hover:bg-slate-50 transition-colors font-medium">导出传函</button>
+            <button id="importTf" class="border border-slate-300 text-slate-700 bg-white px-3 py-1.5 rounded-md hover:bg-slate-50 transition-colors font-medium">导入传函</button>
             <button id="usageHelp" class="border border-slate-300 text-slate-700 bg-white px-3 py-1.5 rounded-md hover:bg-slate-50 transition-colors font-medium">使用说明</button>
             <button id="resetExample" class="bg-blue-600 text-white px-3 py-1.5 rounded-md hover:bg-blue-700 transition-colors font-medium">重置示例</button>
         </div>
     </header>
+    <input id="importTfFile" type="file" accept=".yaml,.yml,text/yaml,application/x-yaml" class="hidden">
 
     <div id="helpModal" class="hidden fixed inset-0 z-50 items-center justify-center bg-slate-900/45 px-4">
         <div class="bg-white rounded-lg shadow-xl border border-slate-200 max-w-lg w-full">
@@ -63,6 +66,7 @@
             <div class="px-5 py-4 text-sm text-slate-600 leading-6">
                 <ul class="list-disc pl-5 space-y-2">
                     <li>在右侧面板添加、删除或编辑零点和极点。</li>
+                    <li>使用右上角的“导出传函”和“导入传函”按钮可以保存或读取 tf.yaml。</li>
                     <li>在零极点图中拖动对象可以调整位置。</li>
                     <li>上方波特图支持精确模式和折线草绘模式。</li>
                     <li>点击零点或极点可查看该对象对波特图的贡献。</li>
@@ -493,6 +497,190 @@
             const ax = Math.abs(x);
             if (ax >= 10000 || ax < 0.001) return x.toExponential(2);
             return Number(x.toFixed(digits)).toString();
+        }
+
+        function yamlNumber(value) {
+            if (!Number.isFinite(value)) throw new Error("数值必须是有限实数。");
+            return Object.is(value, -0) ? "0" : String(Number(value));
+        }
+
+        function entriesToYaml(entries) {
+            if (!entries.length) return " []\n";
+            return `\n${entries.map((entry) => [
+                `  - re: ${yamlNumber(entry.re)}`,
+                `    im: ${yamlNumber(Math.abs(entry.im || 0))}`
+            ].join("\n")).join("\n")}\n`;
+        }
+
+        function transferToYaml() {
+            return [
+                "# bode-sketch transfer function",
+                `gain: ${yamlNumber(gainK())}`,
+                `zeros:${entriesToYaml(state.zeros)}`.trimEnd(),
+                `poles:${entriesToYaml(state.poles)}`.trimEnd(),
+                ""
+            ].join("\n");
+        }
+
+        async function saveTextFile(filename, text) {
+            const blob = new Blob([text], { type: "text/yaml;charset=utf-8" });
+            if (window.showSaveFilePicker) {
+                const handle = await window.showSaveFilePicker({
+                    suggestedName: filename,
+                    types: [{
+                        description: "YAML file",
+                        accept: { "text/yaml": [".yaml", ".yml"] }
+                    }]
+                });
+                const writable = await handle.createWritable();
+                await writable.write(blob);
+                await writable.close();
+                return;
+            }
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+        }
+
+        async function exportTransferFunction() {
+            try {
+                await saveTextFile("tf.yaml", transferToYaml());
+            } catch (err) {
+                if (err && err.name === "AbortError") return;
+                alert(`导出失败：${err && err.message ? err.message : err}`);
+            }
+        }
+
+        function parseYamlScalarNumber(raw, label) {
+            const text = String(raw || "").trim();
+            if (!text) throw new Error(`${label} 不能为空。`);
+            const value = Number(text);
+            if (!Number.isFinite(value)) throw new Error(`${label} 必须是有限实数。`);
+            return value;
+        }
+
+        function parseTransferYaml(text) {
+            const result = { gain: null, zeros: null, poles: null };
+            let section = null;
+            let currentItem = null;
+            const lines = String(text || "").replace(/\r\n?/g, "\n").split("\n");
+            const parseItemField = (item, key, rawValue, lineNo) => {
+                if (key !== "re" && key !== "im") throw new Error(`第 ${lineNo} 行：不支持的字段 ${key}。`);
+                if (item[key] !== null) throw new Error(`第 ${lineNo} 行：字段 ${key} 重复。`);
+                item[key] = parseYamlScalarNumber(rawValue, `第 ${lineNo} 行 ${key}`);
+            };
+            lines.forEach((rawLine, index) => {
+                const lineNo = index + 1;
+                const line = rawLine.replace(/#.*/, "").trimEnd();
+                if (!line.trim()) return;
+                const trimmed = line.trim();
+                const gainMatch = trimmed.match(/^gain\s*:\s*(.+)$/);
+                if (gainMatch) {
+                    if (result.gain !== null) throw new Error(`第 ${lineNo} 行：gain 重复。`);
+                    result.gain = parseYamlScalarNumber(gainMatch[1], "gain");
+                    section = null;
+                    currentItem = null;
+                    return;
+                }
+                const sectionMatch = trimmed.match(/^(zeros|poles)\s*:\s*(.*)$/);
+                if (sectionMatch) {
+                    const name = sectionMatch[1];
+                    const suffix = sectionMatch[2].trim();
+                    if (result[name] !== null) throw new Error(`第 ${lineNo} 行：${name} 重复。`);
+                    if (suffix && suffix !== "[]") throw new Error(`第 ${lineNo} 行：${name} 只能为空列表 [] 或块列表。`);
+                    result[name] = [];
+                    section = suffix === "[]" ? null : name;
+                    currentItem = null;
+                    return;
+                }
+                if (!section) throw new Error(`第 ${lineNo} 行：未知字段或列表项位置错误。`);
+                const itemMatch = line.match(/^\s*-\s*(.*)$/);
+                if (itemMatch) {
+                    currentItem = { re: null, im: null };
+                    result[section].push(currentItem);
+                    const inline = itemMatch[1].trim();
+                    if (inline) {
+                        const fieldMatch = inline.match(/^(re|im)\s*:\s*(.+)$/);
+                        if (!fieldMatch) throw new Error(`第 ${lineNo} 行：列表项必须使用 re/im 字段。`);
+                        parseItemField(currentItem, fieldMatch[1], fieldMatch[2], lineNo);
+                    }
+                    return;
+                }
+                const fieldMatch = line.match(/^\s+(re|im)\s*:\s*(.+)$/);
+                if (fieldMatch && currentItem) {
+                    parseItemField(currentItem, fieldMatch[1], fieldMatch[2], lineNo);
+                    return;
+                }
+                throw new Error(`第 ${lineNo} 行：格式错误。`);
+            });
+            if (result.gain === null) throw new Error("缺少 gain 字段。");
+            if (!Array.isArray(result.zeros)) throw new Error("缺少 zeros 列表。");
+            if (!Array.isArray(result.poles)) throw new Error("缺少 poles 列表。");
+            ["zeros", "poles"].forEach((name) => {
+                result[name].forEach((item, index) => {
+                    if (item.re === null || item.im === null) {
+                        throw new Error(`${name} 第 ${index + 1} 项必须同时包含 re 和 im。`);
+                    }
+                });
+            });
+            return result;
+        }
+
+        function configureGainCoefficient(k, zeroEntries, poleEntries) {
+            const candidates = [1, 0.1, 10, 0.01, 100, 0.001, 1000];
+            for (let i = -6; i <= 6; i++) candidates.push(Math.pow(10, i + 0.37));
+            for (const w of candidates) {
+                const num = cAbs(productValue(zeroEntries, w));
+                const den = cAbs(productValue(poleEntries, w));
+                if (!Number.isFinite(num) || !Number.isFinite(den) || num <= EPS || den <= EPS) continue;
+                const target = k * num / den;
+                if (!Number.isFinite(target)) continue;
+                state.wRef = w;
+                state.gRef = target;
+                state.gainUnit = "linear";
+                return;
+            }
+            throw new Error("无法为该传函找到合适的参考频率来设置增益。");
+        }
+
+        function applyTransferData(data) {
+            const zeroSpecs = data.zeros.map((item) => ({ re: item.re, im: Math.abs(item.im) }));
+            const poleSpecs = data.poles.map((item) => ({ re: item.re, im: Math.abs(item.im) }));
+            configureGainCoefficient(data.gain, zeroSpecs, poleSpecs);
+            state.nextId = 1;
+            const zeroEntries = zeroSpecs.map((item) => newEntry("zero", item.re, item.im));
+            const poleEntries = poleSpecs.map((item) => newEntry("pole", item.re, item.im));
+            state.zeros = zeroEntries;
+            state.poles = poleEntries;
+            state.selected = null;
+            state.pzAddMode = null;
+            state.drag = null;
+            state.pzDragMapper = null;
+            state.bodeCursorW = null;
+            state.bodeCursorPointerId = null;
+            state.timeCursorKind = null;
+            state.timeCursorT = null;
+            state.timeCursorPointerId = null;
+            Object.assign(state.ranges, {
+                autoFreq: true, autoMag: true, autoPhase: true,
+                autoTimeImpulse: true, autoTimeStep: true
+            });
+        }
+
+        async function importTransferFile(file) {
+            if (!file) return;
+            try {
+                const data = parseTransferYaml(await file.text());
+                applyTransferData(data);
+                render();
+            } catch (err) {
+                alert(`导入失败：${err && err.message ? err.message : err}`);
+            }
         }
 
         function clamp(value, min, max) {
@@ -2152,6 +2340,15 @@
 
         function bindEvents() {
             $("resetExample").addEventListener("click", resetExample);
+            $("exportTf").addEventListener("click", exportTransferFunction);
+            $("importTf").addEventListener("click", () => {
+                const input = $("importTfFile");
+                input.value = "";
+                input.click();
+            });
+            $("importTfFile").addEventListener("change", (e) => {
+                importTransferFile(e.target.files && e.target.files[0]);
+            });
             $("usageHelp").addEventListener("click", openHelpModal);
             $("closeHelpModal").addEventListener("click", closeHelpModal);
             $("confirmHelpModal").addEventListener("click", closeHelpModal);
