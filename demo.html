@@ -43,12 +43,39 @@
                 </svg>
             </div>
             <h1 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-600">bode-sketch</h1>
+            <span class="text-xs font-semibold text-slate-400">v1.0</span>
+            <span class="hidden sm:inline text-xs text-slate-500">
+                by <a href="https://github.com/many-question" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-700 hover:underline">many_question</a> with Codex
+            </span>
         </div>
         <div class="ml-auto hidden sm:flex items-center gap-4 text-sm">
-            <span id="statusBadge" class="text-xs text-slate-500">连续时间 H(s) 教学可视化</span>
+            <button id="usageHelp" class="border border-slate-300 text-slate-700 bg-white px-3 py-1.5 rounded-md hover:bg-slate-50 transition-colors font-medium">使用说明</button>
             <button id="resetExample" class="bg-blue-600 text-white px-3 py-1.5 rounded-md hover:bg-blue-700 transition-colors font-medium">重置示例</button>
         </div>
     </header>
+
+    <div id="helpModal" class="hidden fixed inset-0 z-50 items-center justify-center bg-slate-900/45 px-4">
+        <div class="bg-white rounded-lg shadow-xl border border-slate-200 max-w-lg w-full">
+            <div class="px-5 py-3 border-b border-slate-100 flex items-center justify-between gap-3">
+                <h2 class="font-semibold text-slate-800">使用说明</h2>
+                <button id="closeHelpModal" class="text-slate-400 hover:text-slate-700 text-xl leading-none px-1">×</button>
+            </div>
+            <div class="px-5 py-4 text-sm text-slate-600 leading-6">
+                <ul class="list-disc pl-5 space-y-2">
+                    <li>在右侧面板添加、删除或编辑零点和极点。</li>
+                    <li>在零极点图中拖动对象可以调整位置。</li>
+                    <li>上方波特图支持精确模式和折线草绘模式。</li>
+                    <li>点击零点或极点可查看该对象对波特图的贡献。</li>
+                    <li>选中极点时，冲激响应和阶跃响应会高亮显示该极点对应的模态贡献。</li>
+                    <li>可用各图右上角的设置按钮调整坐标范围。</li>
+                    <li>按住并拖动图中的 cursor 可读取当前频率或时间处的数值。</li>
+                </ul>
+            </div>
+            <div class="px-5 py-3 border-t border-slate-100 flex justify-end">
+                <button id="confirmHelpModal" class="bg-blue-600 text-white px-3 py-1.5 rounded-md hover:bg-blue-700 transition-colors font-medium">知道了</button>
+            </div>
+        </div>
+    </div>
 
     <div class="flex-1 flex flex-col md:flex-row overflow-hidden">
         <main class="flex-1 flex flex-col overflow-y-auto bg-slate-100 p-4 gap-4">
@@ -119,7 +146,13 @@
             <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
                 <section class="bg-white border border-slate-200 rounded-lg shadow-sm flex flex-col min-h-[300px]">
                     <div class="px-4 py-2 border-b border-slate-100 flex items-center justify-between gap-2">
-                        <h2 class="font-medium text-slate-800 text-sm">冲激响应 (Impulse Response)</h2>
+                        <div class="flex flex-wrap items-center gap-3 min-w-0">
+                            <h2 class="font-medium text-slate-800 text-sm shrink-0">冲激响应 (Impulse Response)</h2>
+                            <div id="impulseModalHint" class="hidden bg-blue-50 border border-blue-200 text-blue-700 px-3 py-1 rounded-full text-xs font-medium items-center gap-2">
+                                <span>展示选中极点的模态贡献</span>
+                                <button id="clearSelectionFromImpulse" class="hover:text-blue-900 bg-white rounded-full px-1">×</button>
+                            </div>
+                        </div>
                         <details class="relative shrink-0">
                             <summary class="p-1 text-slate-500 hover:text-slate-700 rounded hover:bg-slate-100 transition-colors cursor-pointer">
                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
@@ -153,16 +186,22 @@
                             </div>
                         </details>
                     </div>
-                    <div class="flex-1 p-4">
-                        <div class="h-full min-h-[220px] relative border border-slate-200 rounded bg-white plot-grid">
-                            <svg id="impulsePlot" class="plot-svg absolute inset-0 w-full h-full" viewBox="0 0 700 260"></svg>
+                    <div class="flex-1 p-4 flex flex-col">
+                        <div class="flex-1 min-h-[220px] relative border border-slate-200 rounded bg-white plot-grid">
+                            <svg id="impulsePlot" class="plot-svg tap-target absolute inset-0 w-full h-full" viewBox="0 0 700 260"></svg>
                         </div>
                     </div>
                 </section>
 
                 <section class="bg-white border border-slate-200 rounded-lg shadow-sm flex flex-col min-h-[300px]">
                     <div class="px-4 py-2 border-b border-slate-100 flex items-center justify-between gap-2">
-                        <h2 class="font-medium text-slate-800 text-sm">阶跃响应 (Step Response)</h2>
+                        <div class="flex flex-wrap items-center gap-3 min-w-0">
+                            <h2 class="font-medium text-slate-800 text-sm shrink-0">阶跃响应 (Step Response)</h2>
+                            <div id="stepModalHint" class="hidden bg-blue-50 border border-blue-200 text-blue-700 px-3 py-1 rounded-full text-xs font-medium items-center gap-2">
+                                <span>展示选中极点的模态贡献</span>
+                                <button id="clearSelectionFromStep" class="hover:text-blue-900 bg-white rounded-full px-1">×</button>
+                            </div>
+                        </div>
                         <details class="relative shrink-0">
                             <summary class="p-1 text-slate-500 hover:text-slate-700 rounded hover:bg-slate-100 transition-colors cursor-pointer">
                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
@@ -196,9 +235,9 @@
                             </div>
                         </details>
                     </div>
-                    <div class="flex-1 p-4">
-                        <div class="h-full min-h-[220px] relative border border-slate-200 rounded bg-white plot-grid">
-                            <svg id="stepPlot" class="plot-svg absolute inset-0 w-full h-full" viewBox="0 0 700 260"></svg>
+                    <div class="flex-1 p-4 flex flex-col">
+                        <div class="flex-1 min-h-[220px] relative border border-slate-200 rounded bg-white plot-grid">
+                            <svg id="stepPlot" class="plot-svg tap-target absolute inset-0 w-full h-full" viewBox="0 0 700 260"></svg>
                         </div>
                     </div>
                 </section>
@@ -303,6 +342,9 @@
             pzAddMode: null,
             bodeCursorW: null,
             bodeCursorPointerId: null,
+            timeCursorKind: null,
+            timeCursorT: null,
+            timeCursorPointerId: null,
             nextId: 1
         };
 
@@ -315,14 +357,13 @@
         function resetExample() {
             state.nextId = 1;
             state.zeros = [
-                newEntry("zero", 10, 0),
                 newEntry("zero", -1, 9.95)
             ];
             state.poles = [
                 newEntry("pole", -5, 0),
                 newEntry("pole", -5, 31.22)
             ];
-            state.selected = { kind: "zero", id: state.zeros[1].id };
+            state.selected = null;
             state.mode = "sketch";
             state.pzLogScale = false;
             state.pzAddMode = null;
@@ -331,6 +372,9 @@
             state.gainUnit = "db-pos";
             state.bodeCursorW = null;
             state.bodeCursorPointerId = null;
+            state.timeCursorKind = null;
+            state.timeCursorT = null;
+            state.timeCursorPointerId = null;
             Object.assign(state.ranges, {
                 autoFreq: true, autoMag: true, autoPhase: true,
                 autoTimeImpulse: true, autoTimeStep: true
@@ -344,7 +388,7 @@
         function cMul(a, b) { return c(a.re * b.re - a.im * b.im, a.re * b.im + a.im * b.re); }
         function cDiv(a, b) {
             const d = b.re * b.re + b.im * b.im;
-            return d < EPS ? c(NaN, NaN) : c((a.re * b.re + a.im * b.im) / d, (a.im * b.re - a.re * b.im) / d);
+            return d < EPS * EPS ? c(NaN, NaN) : c((a.re * b.re + a.im * b.im) / d, (a.im * b.re - a.re * b.im) / d);
         }
         function cAbs(a) { return Math.hypot(a.re, a.im); }
         function cArg(a) { return Math.atan2(a.im, a.re); }
@@ -372,6 +416,17 @@
 
         function productValue(entries, w) {
             return entries.reduce((acc, entry) => cMul(acc, factorValue(entry, w)), c(1, 0));
+        }
+
+        function rootFactorValue(entry, root) {
+            if (entry.im > EPS) {
+                return cMul(cSub(root, c(entry.re, entry.im)), cSub(root, c(entry.re, -entry.im)));
+            }
+            return cSub(root, c(entry.re, 0));
+        }
+
+        function entryOrder(entry) {
+            return entry.im > EPS ? 2 : 1;
         }
 
         function targetGainSigned() {
@@ -757,7 +812,7 @@
             }
         }
 
-        function drawAxes(svg, width, height, xTicks, yTicks, xLabel, yLabel, xFn, yFn) {
+        function drawAxes(svg, width, height, xTicks, yTicks, xLabel, yLabel, xFn, yFn, options = {}) {
             const plotW = width - PLOT.left - PLOT.right;
             const plotH = height - PLOT.top - PLOT.bottom;
             svg.appendChild(svgEl("rect", { x: PLOT.left, y: PLOT.top, width: plotW, height: plotH, fill: "white", opacity: "0.7" }));
@@ -765,7 +820,11 @@
                 const x = xFn(tick);
                 svg.appendChild(svgEl("line", { x1: x, x2: x, y1: PLOT.top, y2: height - PLOT.bottom, stroke: "#e2e8f0", "stroke-width": 1 }));
                 const text = svgEl("text", { x, y: height - 12, "font-size": 11, fill: "#64748b", "text-anchor": "middle" });
-                appendPowerOfTenLabel(text, tick);
+                if (options.xTickFormat === "linear") {
+                    text.textContent = fmt(tick, 3);
+                } else {
+                    appendPowerOfTenLabel(text, tick);
+                }
                 svg.appendChild(text);
             });
             yTicks.forEach((tick) => {
@@ -829,7 +888,7 @@
             const logMax = Math.log10(xMax);
             const xFn = (x) => PLOT.left + (Math.log10(x) - logMin) / (logMax - logMin) * (width - PLOT.left - PLOT.right);
             const yFn = (y) => PLOT.top + (yMax - y) / (yMax - yMin) * (height - PLOT.top - PLOT.bottom);
-            drawAxes(svg, width, height, ticksLog(xMin, xMax), ticksLinear(yMin, yMax, 5), "ω rad/s", label, xFn, yFn);
+            drawAxes(svg, width, height, ticksLog(xMin, xMax), ticksLinear(yMin, yMax, 5), "Frequency (rad/s)", label, xFn, yFn);
             series.forEach((s) => {
                 if (s.kind === "vline") {
                     const x = xFn(s.x);
@@ -1011,6 +1070,20 @@
             return values[values.length - 1];
         }
 
+        function interpolateLinearSeries(xs, values, x) {
+            if (!xs || !values || xs.length < 2 || values.length < 2) return NaN;
+            if (x <= xs[0]) return values[0];
+            if (x >= xs[xs.length - 1]) return values[values.length - 1];
+            for (let i = 1; i < xs.length; i++) {
+                if (x <= xs[i]) {
+                    const dx = xs[i] - xs[i - 1];
+                    const t = dx > EPS ? (x - xs[i - 1]) / dx : 0;
+                    return values[i - 1] + (values[i] - values[i - 1]) * t;
+                }
+            }
+            return values[values.length - 1];
+        }
+
         function slopePerDecade(freqs, values, x) {
             if (!freqs || !values || freqs.length < 2 || values.length < 2) return NaN;
             let index = 1;
@@ -1119,41 +1192,157 @@
             const roots = allRoots(state.poles);
             const stableRates = roots.filter((p) => p.re < -EPS).map((p) => -p.re);
             const growRates = roots.filter((p) => p.re > EPS).map((p) => p.re);
-            const osc = roots.filter((p) => Math.abs(p.im) > EPS).map((p) => Math.abs(p.im));
+            const undampedOsc = roots.filter((p) => Math.abs(p.re) <= EPS && Math.abs(p.im) > EPS).map((p) => Math.abs(p.im));
             let tMax = 10;
             if (growRates.length) tMax = Math.min(20, Math.max(0.5, 4 / Math.max(...growRates)));
             else if (stableRates.length) tMax = Math.min(1000, Math.max(0.1, 8 / Math.min(...stableRates)));
-            if (osc.length) tMax = Math.max(tMax, Math.min(1000, 4 * 2 * Math.PI / Math.min(...osc)));
+            if (undampedOsc.length) tMax = Math.max(tMax, Math.min(1000, 4 * 2 * Math.PI / Math.min(...undampedOsc)));
             return tMax;
         }
 
+        function poleRootModes() {
+            const modes = [];
+            state.poles.forEach((entry) => {
+                modes.push({ entry, root: c(entry.re, entry.im) });
+                if (entry.im > EPS) modes.push({ entry, root: c(entry.re, -entry.im) });
+            });
+            return modes;
+        }
+
+        function integrateSamples(t, y) {
+            const out = [];
+            let acc = 0;
+            for (let i = 0; i < t.length; i++) {
+                if (i > 0) acc += 0.5 * (y[i] + y[i - 1]) * (t[i] - t[i - 1]);
+                out.push(acc);
+            }
+            return out;
+        }
+
+        function numeratorAtRoot(root) {
+            const product = state.zeros.reduce((acc, entry) => cMul(acc, rootFactorValue(entry, root)), c(1, 0));
+            return cMul(c(gainK(), 0), product);
+        }
+
+        function denominatorDerivativeAtMode(modes, index) {
+            const root = modes[index].root;
+            return modes.reduce((acc, mode, i) => {
+                if (i === index) return acc;
+                return cMul(acc, cSub(root, mode.root));
+            }, c(1, 0));
+        }
+
+        function modeResidues(modes) {
+            return modes.map((mode, index) => cDiv(numeratorAtRoot(mode.root), denominatorDerivativeAtMode(modes, index)));
+        }
+
+        function pairImpulseValue(root, residue, ti) {
+            const e = Math.exp(Math.max(-700, Math.min(700, root.re * ti)));
+            const angle = root.im * ti;
+            return 2 * e * (residue.re * Math.cos(angle) - residue.im * Math.sin(angle));
+        }
+
+        function realModeImpulseValue(root, residue, ti) {
+            return cMul(residue, cExp(c(root.re * ti, 0))).re;
+        }
+
+        function responseFinalValue(kind, modes, residues, entryId = null) {
+            let sum = 0;
+            for (let i = 0; i < modes.length; i++) {
+                const mode = modes[i];
+                if (entryId && mode.entry.id !== entryId) continue;
+                const root = mode.root;
+                const residue = residues[i];
+                if (!Number.isFinite(residue.re) || !Number.isFinite(residue.im)) return NaN;
+                if (root.re > EPS || (Math.abs(root.re) <= EPS && Math.abs(root.im) > EPS)) return NaN;
+                if (kind === "impulse") {
+                    if (Math.abs(root.re) <= EPS && Math.abs(root.im) <= EPS) sum += residue.re;
+                    continue;
+                }
+                if (Math.abs(root.re) <= EPS && Math.abs(root.im) <= EPS) {
+                    if (cAbs(residue) > EPS) return NaN;
+                    continue;
+                }
+                if (root.im > EPS) {
+                    sum -= 2 * cDiv(residue, root).re;
+                    if (i + 1 < modes.length && modes[i + 1].entry.id === mode.entry.id && modes[i + 1].root.im < -EPS) i++;
+                } else if (root.im < -EPS) {
+                    continue;
+                } else {
+                    sum -= cDiv(residue, root).re;
+                }
+            }
+            return Number.isFinite(sum) ? sum : NaN;
+        }
+
         function plotTimeResponse(kind, tMinOverride = 0, tMaxOverride = null) {
-            const roots = allRoots(state.poles);
-            const num = polyFromEntries(state.zeros).map((v) => v * gainK());
-            const den = polyFromEntries(state.poles);
-            const dden = polyDerivative(den);
-            const isImproper = num.length >= den.length;
-            const residues = roots.map((root) => cDiv(polyEvalComplex(num, root), polyEvalComplex(dden, root)));
+            const modes = poleRootModes();
+            const numOrder = state.zeros.reduce((sum, entry) => sum + entryOrder(entry), 0);
+            const denOrder = state.poles.reduce((sum, entry) => sum + entryOrder(entry), 0);
+            const isImproper = numOrder >= denOrder;
+            const residues = modeResidues(modes);
             const defaultT = defaultTimeMax();
             const tStart = Math.min(0, Number.isFinite(tMinOverride) ? tMinOverride : 0);
             const tEnd = Number.isFinite(tMaxOverride) && tMaxOverride > tStart ? tMaxOverride : defaultT;
             const n = 260;
             const t = Array.from({ length: n }, (_, i) => tStart + (tEnd - tStart) * i / (n - 1));
-            const impulse = t.map((ti) => {
+            const selected = selectedEntry();
+            const selectedPoleId = selected && selected.kind === "pole" ? selected.id : null;
+            const sampleImpulse = (entryId = null) => t.map((ti) => {
                 if (ti < 0) return 0;
-                let sum = c(0, 0);
-                roots.forEach((root, i) => {
-                    sum = cAdd(sum, cMul(residues[i], cExp(c(root.re * ti, root.im * ti))));
-                });
-                return Number.isFinite(sum.re) ? sum.re : NaN;
+                let sum = 0;
+                for (let i = 0; i < modes.length; i++) {
+                    const mode = modes[i];
+                    if (entryId && mode.entry.id !== entryId) continue;
+                    const root = mode.root;
+                    if (root.im > EPS) {
+                        sum += pairImpulseValue(root, residues[i], ti);
+                        if (i + 1 < modes.length && modes[i + 1].entry.id === mode.entry.id && modes[i + 1].root.im < -EPS) i++;
+                    } else if (root.im < -EPS) {
+                        continue;
+                    } else {
+                        sum += realModeImpulseValue(root, residues[i], ti);
+                    }
+                }
+                return Number.isFinite(sum) ? sum : NaN;
             });
-            const step = [];
-            let acc = 0;
-            for (let i = 0; i < t.length; i++) {
-                if (i > 0) acc += 0.5 * (impulse[i] + impulse[i - 1]) * (t[i] - t[i - 1]);
-                step.push(acc);
-            }
-            return { t, y: kind === "impulse" ? impulse : step, tMax: defaultT, isImproper };
+            const impulse = sampleImpulse();
+            const step = integrateSamples(t, impulse);
+            const modalImpulse = selectedPoleId ? sampleImpulse(selectedPoleId) : null;
+            const modalStep = modalImpulse ? integrateSamples(t, modalImpulse) : null;
+            const finalValue = responseFinalValue(kind, modes, residues);
+            const modalFinalValue = selectedPoleId ? responseFinalValue(kind, modes, residues, selectedPoleId) : null;
+            return {
+                t,
+                y: kind === "impulse" ? impulse : step,
+                modalY: selectedPoleId ? (kind === "impulse" ? modalImpulse : modalStep) : null,
+                finalValue,
+                modalFinalValue,
+                tMax: defaultT,
+                isImproper
+            };
+        }
+
+        function timeRangeValues(data) {
+            const values = data && data.modalY ? [...data.y, ...data.modalY] : [...data.y];
+            [data.finalValue, data.modalFinalValue].forEach((value) => {
+                if (Number.isFinite(value)) values.push(value);
+            });
+            return values;
+        }
+
+        function visibleFinalValue(data) {
+            return data && data.modalY ? data.modalFinalValue : data.finalValue;
+        }
+
+        function timeAutoRange(data) {
+            let [min, max] = niceRange([...timeRangeValues(data), 0], 1);
+            [0, visibleFinalValue(data)].forEach((value) => {
+                if (!Number.isFinite(value)) return;
+                if (value <= min) min = value - 1;
+                if (value >= max) max = value + 1;
+            });
+            return [min, max];
         }
 
         function updateTimeRanges(impulseData, stepData) {
@@ -1161,17 +1350,17 @@
             if (r.autoTimeImpulse) {
                 r.impulseTMin = 0;
                 r.impulseTMax = impulseData.tMax;
-                [r.impulseYMin, r.impulseYMax] = niceRange(impulseData.y, 1);
+                [r.impulseYMin, r.impulseYMax] = timeAutoRange(impulseData);
             }
             if (r.autoTimeStep) {
                 r.stepTMin = 0;
                 r.stepTMax = stepData.tMax;
-                [r.stepYMin, r.stepYMax] = niceRange(stepData.y, 1);
+                [r.stepYMin, r.stepYMax] = timeAutoRange(stepData);
             }
             if (!validIncreasing(r.impulseTMin, r.impulseTMax)) [r.impulseTMin, r.impulseTMax] = [0, impulseData.tMax];
             if (!validIncreasing(r.stepTMin, r.stepTMax)) [r.stepTMin, r.stepTMax] = [0, stepData.tMax];
-            if (!validIncreasing(r.impulseYMin, r.impulseYMax)) [r.impulseYMin, r.impulseYMax] = niceRange(impulseData.y, 1);
-            if (!validIncreasing(r.stepYMin, r.stepYMax)) [r.stepYMin, r.stepYMax] = niceRange(stepData.y, 1);
+            if (!validIncreasing(r.impulseYMin, r.impulseYMax)) [r.impulseYMin, r.impulseYMax] = timeAutoRange(impulseData);
+            if (!validIncreasing(r.stepYMin, r.stepYMax)) [r.stepYMin, r.stepYMax] = timeAutoRange(stepData);
             ["impulseTMin", "impulseTMax", "impulseYMin", "impulseYMax", "stepTMin", "stepTMax", "stepYMin", "stepYMax"].forEach((id) => {
                 $(id).value = fmt(r[id], 5);
             });
@@ -1181,20 +1370,112 @@
             $("autoTimeStep").checked = r.autoTimeStep;
         }
 
+        function timeCursorSnapshot(kind, data) {
+            if (state.timeCursorKind !== kind || !Number.isFinite(state.timeCursorT)) return null;
+            if (!data || !data.t || data.t.length < 2) return null;
+            const tMin = kind === "impulse" ? state.ranges.impulseTMin : state.ranges.stepTMin;
+            const tMax = kind === "impulse" ? state.ranges.impulseTMax : state.ranges.stepTMax;
+            const t = clamp(state.timeCursorT, tMin, tMax);
+            state.timeCursorT = t;
+            const ySource = data.modalY || data.y;
+            const y = interpolateLinearSeries(data.t, ySource, t);
+            return Number.isFinite(y) ? { t, y } : null;
+        }
+
+        function drawTimeCursor(svg, cursor, xFn, yFn, width, height) {
+            if (!cursor) return;
+            const color = "#ef4444";
+            const plotRight = width - PLOT.right;
+            const plotBottom = height - PLOT.bottom;
+            const x = xFn(cursor.t);
+            const y = clamp(yFn(cursor.y), PLOT.top, plotBottom);
+            svg.appendChild(svgEl("line", {
+                x1: x,
+                x2: x,
+                y1: PLOT.top,
+                y2: plotBottom,
+                stroke: color,
+                "stroke-width": 1.25,
+                opacity: 0.95
+            }));
+            svg.appendChild(svgEl("circle", {
+                cx: x,
+                cy: y,
+                r: 4,
+                fill: color
+            }));
+            const lines = [`时间=${fmt(cursor.t, 5)} s`, `响应=${fmt(cursor.y, 5)}`];
+            const lineHeight = 13;
+            const textWidth = Math.max(...lines.map((line) => line.length)) * 6.2 + 10;
+            const textX = clamp(x + 10, PLOT.left + 6, plotRight - textWidth);
+            const textY = clamp(y - lineHeight / 2, PLOT.top + 12, plotBottom - 8 - lineHeight);
+            svg.appendChild(svgEl("rect", {
+                x: textX - 5,
+                y: textY - 11,
+                width: textWidth,
+                height: lines.length * lineHeight + 4,
+                rx: 3,
+                fill: "white",
+                opacity: 0.86
+            }));
+            const text = svgEl("text", {
+                x: textX,
+                y: textY,
+                "font-size": 10,
+                fill: color
+            });
+            lines.forEach((line, i) => {
+                const tspan = svgEl("tspan", { x: textX, dy: i ? lineHeight : 0 });
+                tspan.textContent = line;
+                text.appendChild(tspan);
+            });
+            svg.appendChild(text);
+        }
+
         function drawTimePlot(svg, data, yMin, yMax, color, label) {
             svg.innerHTML = "";
             const { width, height } = svgViewport(svg, 700, 260);
+            const kind = label === "Impulse" ? "impulse" : "step";
             const tMin = label === "Impulse" ? state.ranges.impulseTMin : state.ranges.stepTMin;
             const tMax = label === "Impulse" ? state.ranges.impulseTMax : state.ranges.stepTMax;
             const xFn = (x) => PLOT.left + (x - tMin) / (tMax - tMin) * (width - PLOT.left - PLOT.right);
             const yFn = (y) => PLOT.top + (yMax - y) / (yMax - yMin) * (height - PLOT.top - PLOT.bottom);
-            drawAxes(svg, width, height, ticksLinear(tMin, tMax, 5), ticksLinear(yMin, yMax, 5), "t s", label, xFn, yFn);
+            drawAxes(svg, width, height, ticksLinear(tMin, tMax, 5), ticksLinear(yMin, yMax, 5), "time (s)", label, xFn, yFn, { xTickFormat: "linear" });
             if (yMin < 0 && yMax > 0) {
                 const y0 = yFn(0);
-                svg.appendChild(svgEl("line", { x1: PLOT.left, x2: width - PLOT.right, y1: y0, y2: y0, stroke: "#94a3b8", "stroke-dasharray": "4 4" }));
+                svg.appendChild(svgEl("line", { x1: PLOT.left, x2: width - PLOT.right, y1: y0, y2: y0, stroke: "#0f172a", "stroke-width": 1.2 }));
+            }
+            const finalValue = visibleFinalValue(data);
+            if (Number.isFinite(finalValue) && finalValue >= yMin && finalValue <= yMax) {
+                const yFinal = yFn(finalValue);
+                svg.appendChild(svgEl("line", {
+                    x1: PLOT.left,
+                    x2: width - PLOT.right,
+                    y1: yFinal,
+                    y2: yFinal,
+                    stroke: "#64748b",
+                    "stroke-width": 1.2,
+                    "stroke-dasharray": "5 4"
+                }));
+                const text = svgEl("text", {
+                    x: width - PLOT.right - 6,
+                    y: Math.max(PLOT.top + 12, yFinal - 6),
+                    "font-size": 11,
+                    fill: "#475569",
+                    "text-anchor": "end"
+                });
+                text.textContent = `终态=${fmt(finalValue, 4)}`;
+                svg.appendChild(text);
             }
             const points = data.t.map((x, i) => ({ x, y: data.y[i] })).filter((p) => p.x >= tMin && p.x <= tMax);
-            drawSeries(svg, points, xFn, yFn, color, 2.2);
+            if (data.modalY) {
+                const modalPoints = data.t.map((x, i) => ({ x, y: data.modalY[i] })).filter((p) => p.x >= tMin && p.x <= tMax);
+                drawSeries(svg, points, xFn, yFn, "#94a3b8", 2, 0.45);
+                drawSeries(svg, modalPoints, xFn, yFn, color, 2.6);
+            } else {
+                drawSeries(svg, points, xFn, yFn, color, 2.2);
+            }
+            drawTimeCursor(svg, timeCursorSnapshot(kind, data), xFn, yFn, width, height);
         }
 
         function renderLists() {
@@ -1614,6 +1895,11 @@
                 const label = entryLabel(selected.kind, indexEntries(selected.kind).indexOf(selected), selected);
                 $("contributionText").textContent = `展示选中对象贡献 (${label})`;
             }
+            const showTimeModalHint = selected && selected.kind === "pole";
+            ["impulseModalHint", "stepModalHint"].forEach((id) => {
+                $(id).classList.toggle("hidden", !showTimeModalHint);
+                $(id).classList.toggle("flex", !!showTimeModalHint);
+            });
             const fullReference = state.mode === "sketch" ? bode.active : bode.exact;
             const fullFreqs = state.mode === "sketch" ? bode.activeFreqs : bode.exactFreqs;
             const contributionFreqs = selected && state.mode === "sketch" ? bode.sketchFreqs : bode.exactFreqs;
@@ -1698,8 +1984,8 @@
             appendBodeCursorSeries(magSeries, phaseSeries, cursor);
             const magViewport = svgViewport($("magPlot"), 800, 240);
             const phaseViewport = svgViewport($("phasePlot"), 800, 240);
-            drawBodePlot($("magPlot"), magViewport.width, magViewport.height, bode.freqs, magSeries, state.ranges.magMin, state.ranges.magMax, "Magnitude dB");
-            drawBodePlot($("phasePlot"), phaseViewport.width, phaseViewport.height, bode.freqs, phaseSeries, state.ranges.phaseMin, state.ranges.phaseMax, "Phase deg");
+            drawBodePlot($("magPlot"), magViewport.width, magViewport.height, bode.freqs, magSeries, state.ranges.magMin, state.ranges.magMax, "Magnitude (dB)");
+            drawBodePlot($("phasePlot"), phaseViewport.width, phaseViewport.height, bode.freqs, phaseSeries, state.ranges.phaseMin, state.ranges.phaseMax, "Phase (deg)");
 
             const autoImpulse = plotTimeResponse("impulse");
             const autoStep = plotTimeResponse("step");
@@ -1827,11 +2113,59 @@
             render();
         }
 
+        function timeKindFromPlot(svg) {
+            return svg.id === "impulsePlot" ? "impulse" : "step";
+        }
+
+        function pointerToTime(evt, svg, kind) {
+            const rect = svg.getBoundingClientRect();
+            if (!(rect.width > 0)) return null;
+            const viewBox = svg.viewBox.baseVal;
+            const width = viewBox && viewBox.width ? viewBox.width : 700;
+            const x = (evt.clientX - rect.left) / rect.width * width;
+            const plotWidth = Math.max(1, width - PLOT.left - PLOT.right);
+            const ratio = clamp((x - PLOT.left) / plotWidth, 0, 1);
+            const tMin = kind === "impulse" ? state.ranges.impulseTMin : state.ranges.stepTMin;
+            const tMax = kind === "impulse" ? state.ranges.impulseTMax : state.ranges.stepTMax;
+            if (!(tMax > tMin)) return null;
+            return tMin + ratio * (tMax - tMin);
+        }
+
+        function setTimeCursorFromPointer(evt, svg) {
+            const kind = timeKindFromPlot(svg);
+            const t = pointerToTime(evt, svg, kind);
+            if (!Number.isFinite(t)) return;
+            state.timeCursorKind = kind;
+            state.timeCursorT = t;
+            render();
+        }
+
+        function openHelpModal() {
+            $("helpModal").classList.remove("hidden");
+            $("helpModal").classList.add("flex");
+        }
+
+        function closeHelpModal() {
+            $("helpModal").classList.add("hidden");
+            $("helpModal").classList.remove("flex");
+        }
+
         function bindEvents() {
             $("resetExample").addEventListener("click", resetExample);
+            $("usageHelp").addEventListener("click", openHelpModal);
+            $("closeHelpModal").addEventListener("click", closeHelpModal);
+            $("confirmHelpModal").addEventListener("click", closeHelpModal);
+            $("helpModal").addEventListener("click", (e) => {
+                if (e.target.id === "helpModal") closeHelpModal();
+            });
+            window.addEventListener("keydown", (e) => {
+                if (e.key === "Escape") closeHelpModal();
+            });
             $("modeExact").addEventListener("click", () => { state.mode = "exact"; render(); });
             $("modeSketch").addEventListener("click", () => { state.mode = "sketch"; render(); });
             $("clearSelectionFromBode").addEventListener("click", () => { state.selected = null; render(); });
+            $("clearSelectionFromImpulse").addEventListener("click", () => { state.selected = null; render(); });
+            $("clearSelectionFromStep").addEventListener("click", () => { state.selected = null; render(); });
             $("pzLogScale").addEventListener("change", (e) => { state.pzLogScale = e.target.checked; render(); });
             $("addZero").addEventListener("click", () => addEntry("zero"));
             $("addPole").addEventListener("click", () => addEntry("pole"));
@@ -1874,12 +2208,21 @@
             window.addEventListener("pointerup", pzPointerUp);
             window.addEventListener("pointerup", bodePointerUp);
             window.addEventListener("pointercancel", bodePointerUp);
+            window.addEventListener("pointerup", timePointerUp);
+            window.addEventListener("pointercancel", timePointerUp);
             ["magPlot", "phasePlot"].forEach((id) => {
                 const plot = $(id);
                 plot.addEventListener("pointerdown", bodePointerDown);
                 plot.addEventListener("pointermove", bodePointerMove);
                 plot.addEventListener("pointerup", bodePointerUp);
                 plot.addEventListener("pointercancel", bodePointerUp);
+            });
+            ["impulsePlot", "stepPlot"].forEach((id) => {
+                const plot = $(id);
+                plot.addEventListener("pointerdown", timePointerDown);
+                plot.addEventListener("pointermove", timePointerMove);
+                plot.addEventListener("pointerup", timePointerUp);
+                plot.addEventListener("pointercancel", timePointerUp);
             });
         }
 
@@ -1949,6 +2292,29 @@
             if (state.bodeCursorPointerId !== e.pointerId) return;
             state.bodeCursorPointerId = null;
             state.bodeCursorW = null;
+            if (e.currentTarget.hasPointerCapture && e.currentTarget.hasPointerCapture(e.pointerId)) {
+                e.currentTarget.releasePointerCapture(e.pointerId);
+            }
+            render();
+        }
+
+        function timePointerDown(e) {
+            e.preventDefault();
+            state.timeCursorPointerId = e.pointerId;
+            e.currentTarget.setPointerCapture(e.pointerId);
+            setTimeCursorFromPointer(e, e.currentTarget);
+        }
+
+        function timePointerMove(e) {
+            if (state.timeCursorPointerId !== e.pointerId) return;
+            setTimeCursorFromPointer(e, e.currentTarget);
+        }
+
+        function timePointerUp(e) {
+            if (state.timeCursorPointerId !== e.pointerId) return;
+            state.timeCursorPointerId = null;
+            state.timeCursorKind = null;
+            state.timeCursorT = null;
             if (e.currentTarget.hasPointerCapture && e.currentTarget.hasPointerCapture(e.pointerId)) {
                 e.currentTarget.releasePointerCapture(e.pointerId);
             }
