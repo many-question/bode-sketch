@@ -51,6 +51,7 @@
         <div class="ml-auto hidden sm:flex items-center gap-4 text-sm">
             <button id="exportTf" class="border border-slate-300 text-slate-700 bg-white px-3 py-1.5 rounded-md hover:bg-slate-50 transition-colors font-medium">导出传函</button>
             <button id="importTf" class="border border-slate-300 text-slate-700 bg-white px-3 py-1.5 rounded-md hover:bg-slate-50 transition-colors font-medium">导入传函</button>
+            <button id="exportMatlab" class="border border-slate-300 text-slate-700 bg-white px-3 py-1.5 rounded-md hover:bg-slate-50 transition-colors font-medium">导出 Matlab</button>
             <button id="usageHelp" class="border border-slate-300 text-slate-700 bg-white px-3 py-1.5 rounded-md hover:bg-slate-50 transition-colors font-medium">使用说明</button>
             <button id="resetExample" class="bg-blue-600 text-white px-3 py-1.5 rounded-md hover:bg-blue-700 transition-colors font-medium">重置示例</button>
         </div>
@@ -77,6 +78,22 @@
             </div>
             <div class="px-5 py-3 border-t border-slate-100 flex justify-end">
                 <button id="confirmHelpModal" class="bg-blue-600 text-white px-3 py-1.5 rounded-md hover:bg-blue-700 transition-colors font-medium">知道了</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="matlabModal" class="hidden fixed inset-0 z-50 items-center justify-center bg-slate-900/45 px-4">
+        <div class="bg-white rounded-lg shadow-xl border border-slate-200 max-w-2xl w-full">
+            <div class="px-5 py-3 border-b border-slate-100 flex items-center justify-between gap-3">
+                <h2 class="font-semibold text-slate-800">Matlab 代码</h2>
+                <button id="closeMatlabModal" class="text-slate-400 hover:text-slate-700 text-xl leading-none px-1">×</button>
+            </div>
+            <div class="px-5 py-4">
+                <div class="flex items-start gap-3">
+                    <textarea id="matlabCode" class="flex-1 min-h-[260px] font-mono text-xs leading-5 border border-slate-200 rounded p-3 bg-slate-50 text-slate-800 resize-y" readonly></textarea>
+                    <button id="copyMatlabCode" class="shrink-0 border border-blue-200 bg-blue-50 text-blue-700 px-3 py-1.5 rounded-md hover:bg-blue-100 transition-colors font-medium text-sm">复制</button>
+                </div>
+                <p id="copyMatlabStatus" class="mt-2 text-xs text-slate-500 h-4"></p>
             </div>
         </div>
     </div>
@@ -681,6 +698,50 @@
             } catch (err) {
                 alert(`导入失败：${err && err.message ? err.message : err}`);
             }
+        }
+
+        function matlabNumber(value) {
+            if (!Number.isFinite(value)) throw new Error("Matlab 导出失败：存在非有限数值。");
+            if (Object.is(value, -0) || Math.abs(value) < 1e-14) return "0";
+            const abs = Math.abs(value);
+            if (abs >= 1e5 || abs < 1e-4) return value.toExponential(12).replace(/e\+?/, "e");
+            return String(Number(value.toPrecision(12)));
+        }
+
+        function matlabSigned(value) {
+            const sign = value >= 0 ? "+" : "-";
+            return `${sign} ${matlabNumber(Math.abs(value))}`;
+        }
+
+        function matlabFactor(entry) {
+            if (entry.im > EPS) {
+                const a = -2 * entry.re;
+                const b = entry.re * entry.re + entry.im * entry.im;
+                return `(s^2 ${matlabSigned(a)}*s ${matlabSigned(b)})`;
+            }
+            return `(s ${matlabSigned(-entry.re)})`;
+        }
+
+        function matlabProduct(entries) {
+            return entries.length ? entries.map(matlabFactor).join(" * ") : "1";
+        }
+
+        function matlabTransferExpression() {
+            const numerator = [matlabNumber(gainK()), matlabProduct(state.zeros)].filter((part) => part !== "1").join(" * ") || "1";
+            const denominator = matlabProduct(state.poles);
+            return denominator === "1" ? numerator : `(${numerator}) / (${denominator})`;
+        }
+
+        function matlabCode() {
+            return [
+                's = tf("s");',
+                `h = ${matlabTransferExpression()};`,
+                "figure; pzmap(h);",
+                "figure; bode(h);",
+                "figure; impulse(h);",
+                "figure; step(h);",
+                ""
+            ].join("\n");
         }
 
         function clamp(value, min, max) {
@@ -2338,6 +2399,34 @@
             $("helpModal").classList.remove("flex");
         }
 
+        function openMatlabModal() {
+            $("matlabCode").value = matlabCode();
+            $("copyMatlabStatus").textContent = "";
+            $("matlabModal").classList.remove("hidden");
+            $("matlabModal").classList.add("flex");
+        }
+
+        function closeMatlabModal() {
+            $("matlabModal").classList.add("hidden");
+            $("matlabModal").classList.remove("flex");
+        }
+
+        async function copyMatlabCode() {
+            const textarea = $("matlabCode");
+            try {
+                if (navigator.clipboard && window.isSecureContext) {
+                    await navigator.clipboard.writeText(textarea.value);
+                } else {
+                    textarea.focus();
+                    textarea.select();
+                    document.execCommand("copy");
+                }
+                $("copyMatlabStatus").textContent = "已复制到剪贴板。";
+            } catch (err) {
+                $("copyMatlabStatus").textContent = "复制失败，请手动选择文本复制。";
+            }
+        }
+
         function bindEvents() {
             $("resetExample").addEventListener("click", resetExample);
             $("exportTf").addEventListener("click", exportTransferFunction);
@@ -2349,6 +2438,12 @@
             $("importTfFile").addEventListener("change", (e) => {
                 importTransferFile(e.target.files && e.target.files[0]);
             });
+            $("exportMatlab").addEventListener("click", openMatlabModal);
+            $("closeMatlabModal").addEventListener("click", closeMatlabModal);
+            $("copyMatlabCode").addEventListener("click", copyMatlabCode);
+            $("matlabModal").addEventListener("click", (e) => {
+                if (e.target.id === "matlabModal") closeMatlabModal();
+            });
             $("usageHelp").addEventListener("click", openHelpModal);
             $("closeHelpModal").addEventListener("click", closeHelpModal);
             $("confirmHelpModal").addEventListener("click", closeHelpModal);
@@ -2356,7 +2451,10 @@
                 if (e.target.id === "helpModal") closeHelpModal();
             });
             window.addEventListener("keydown", (e) => {
-                if (e.key === "Escape") closeHelpModal();
+                if (e.key === "Escape") {
+                    closeHelpModal();
+                    closeMatlabModal();
+                }
             });
             $("modeExact").addEventListener("click", () => { state.mode = "exact"; render(); });
             $("modeSketch").addEventListener("click", () => { state.mode = "sketch"; render(); });
