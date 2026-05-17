@@ -115,6 +115,7 @@
                         </div>
                     </div>
                     <p class="ml-auto hidden lg:block text-xs text-slate-400 whitespace-nowrap">鼠标左键拖动创建光标，右键拖动视图，滚轮缩放</p>
+                    <button id="resetBodeView" class="hidden shrink-0 text-xs border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 px-2 py-1 rounded transition-colors">重置</button>
                     <details class="relative shrink-0">
                         <summary class="p-1.5 text-slate-600 bg-slate-100 border border-slate-200 rounded hover:bg-slate-200 transition-colors shadow-inner flex items-center justify-center cursor-pointer">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
@@ -176,6 +177,7 @@
                                 <button id="clearSelectionFromImpulse" class="hover:text-blue-900 bg-white rounded-full px-1">×</button>
                             </div>
                         </div>
+                        <button id="resetImpulseView" class="hidden shrink-0 text-xs border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 px-2 py-1 rounded transition-colors">重置</button>
                         <details class="relative shrink-0">
                             <summary class="p-1 text-slate-500 hover:text-slate-700 rounded hover:bg-slate-100 transition-colors cursor-pointer">
                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
@@ -225,6 +227,7 @@
                                 <button id="clearSelectionFromStep" class="hover:text-blue-900 bg-white rounded-full px-1">×</button>
                             </div>
                         </div>
+                        <button id="resetStepView" class="hidden shrink-0 text-xs border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 px-2 py-1 rounded transition-colors">重置</button>
                         <details class="relative shrink-0">
                             <summary class="p-1 text-slate-500 hover:text-slate-700 rounded hover:bg-slate-100 transition-colors cursor-pointer">
                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
@@ -376,6 +379,9 @@
             viewDrag: null,
             plotTouchPoints: new Map(),
             plotGesture: null,
+            autoBodeViewOverridden: false,
+            autoImpulseViewOverridden: false,
+            autoStepViewOverridden: false,
             autoBodeDirty: true,
             autoImpulseDirty: true,
             autoStepDirty: true,
@@ -388,6 +394,9 @@
             state.autoBodeDirty = true;
             state.autoImpulseDirty = true;
             state.autoStepDirty = true;
+            state.autoBodeViewOverridden = false;
+            state.autoImpulseViewOverridden = false;
+            state.autoStepViewOverridden = false;
         }
 
         function markTimeAutoDirty(id) {
@@ -1077,6 +1086,35 @@
             return Number.isFinite(min) && Number.isFinite(max) && max > min;
         }
 
+        function autoBodeEnabled() {
+            const r = state.ranges;
+            return r.autoFreq && r.autoMag && r.autoPhase;
+        }
+
+        function markBodeViewChangedByUser() {
+            if (!autoBodeEnabled()) return;
+            state.autoBodeViewOverridden = true;
+            state.autoBodeDirty = false;
+        }
+
+        function markTimeViewChangedByUser(kind) {
+            const r = state.ranges;
+            if (kind === "impulse" && r.autoTimeImpulse) {
+                state.autoImpulseViewOverridden = true;
+                state.autoImpulseDirty = false;
+            }
+            if (kind === "step" && r.autoTimeStep) {
+                state.autoStepViewOverridden = true;
+                state.autoStepDirty = false;
+            }
+        }
+
+        function updateViewResetButtons() {
+            $("resetBodeView").classList.toggle("hidden", !(autoBodeEnabled() && state.autoBodeViewOverridden));
+            $("resetImpulseView").classList.toggle("hidden", !(state.ranges.autoTimeImpulse && state.autoImpulseViewOverridden));
+            $("resetStepView").classList.toggle("hidden", !(state.ranges.autoTimeStep && state.autoStepViewOverridden));
+        }
+
         function updateRangeInputs() {
             const r = state.ranges;
             ["wMin", "wMax", "magMin", "magMax", "phaseMin", "phaseMax"].forEach((id) => {
@@ -1087,6 +1125,7 @@
             $("magMin").disabled = $("magMax").disabled = r.autoMag;
             $("phaseMin").disabled = $("phaseMax").disabled = r.autoPhase;
             $("autoBode").checked = r.autoFreq && r.autoMag && r.autoPhase;
+            updateViewResetButtons();
         }
 
         function svgEl(name, attrs = {}) {
@@ -1681,6 +1720,7 @@
             $("stepTMin").disabled = $("stepTMax").disabled = $("stepYMin").disabled = $("stepYMax").disabled = r.autoTimeStep;
             $("autoTimeImpulse").checked = r.autoTimeImpulse;
             $("autoTimeStep").checked = r.autoTimeStep;
+            updateViewResetButtons();
         }
 
         function timeCursorSnapshot(kind, data) {
@@ -2578,6 +2618,7 @@
             } else {
                 [r.phaseMin, r.phaseMax] = panYRange(drag.ranges.phaseMin, drag.ranges.phaseMax, dy, drag.start.plotH);
             }
+            markBodeViewChangedByUser();
             render();
             return true;
         }
@@ -2597,6 +2638,7 @@
                 [r.stepTMin, r.stepTMax] = panLinearRange(drag.ranges.stepTMin, drag.ranges.stepTMax, dx, drag.start.plotW);
                 [r.stepYMin, r.stepYMax] = panYRange(drag.ranges.stepYMin, drag.ranges.stepYMax, dy, drag.start.plotH);
             }
+            markTimeViewChangedByUser(drag.kind);
             render();
             return true;
         }
@@ -2625,6 +2667,7 @@
             } else {
                 [r.phaseMin, r.phaseMax] = zoomYRange(r.phaseMin, r.phaseMax, point.yRatio, scale);
             }
+            markBodeViewChangedByUser();
             render();
         }
 
@@ -2642,6 +2685,7 @@
                 [r.stepTMin, r.stepTMax] = zoomLinearRange(r.stepTMin, r.stepTMax, point.xRatio, scale);
                 [r.stepYMin, r.stepYMax] = zoomYRange(r.stepYMin, r.stepYMax, point.yRatio, scale);
             }
+            markTimeViewChangedByUser(kind);
             render();
         }
 
@@ -2802,8 +2846,10 @@
             const scaleY = gestureAxisScale(gesture.startYDistance, yDistance);
             if (gesture.type === "bode") {
                 applyBodeGesture(gesture, center, scaleX, scaleY);
+                markBodeViewChangedByUser();
             } else {
                 applyTimeGesture(gesture, center, scaleX, scaleY);
+                markTimeViewChangedByUser(gesture.kind);
             }
             render();
             return true;
@@ -2877,6 +2923,31 @@
                 return true;
             }
             return true;
+        }
+
+        function resetBodeViewToAuto() {
+            const r = state.ranges;
+            r.autoFreq = true;
+            r.autoMag = true;
+            r.autoPhase = true;
+            state.autoBodeViewOverridden = false;
+            state.autoBodeDirty = true;
+            clearPlotCursors("bode");
+            render();
+        }
+
+        function resetTimeViewToAuto(kind) {
+            if (kind === "impulse") {
+                state.ranges.autoTimeImpulse = true;
+                state.autoImpulseViewOverridden = false;
+                state.autoImpulseDirty = true;
+            } else {
+                state.ranges.autoTimeStep = true;
+                state.autoStepViewOverridden = false;
+                state.autoStepDirty = true;
+            }
+            clearPlotCursors("time");
+            render();
         }
 
         function openHelpModal() {
@@ -2979,16 +3050,22 @@
                 state.ranges.autoFreq = e.target.checked;
                 state.ranges.autoMag = e.target.checked;
                 state.ranges.autoPhase = e.target.checked;
+                state.autoBodeViewOverridden = false;
                 if (e.target.checked) state.autoBodeDirty = true;
                 render();
             });
             ["autoTimeImpulse", "autoTimeStep"].forEach((id) => {
                 $(id).addEventListener("change", (e) => {
                     state.ranges[id] = e.target.checked;
+                    if (id === "autoTimeImpulse") state.autoImpulseViewOverridden = false;
+                    if (id === "autoTimeStep") state.autoStepViewOverridden = false;
                     if (e.target.checked) markTimeAutoDirty(id);
                     render();
                 });
             });
+            $("resetBodeView").addEventListener("click", resetBodeViewToAuto);
+            $("resetImpulseView").addEventListener("click", () => resetTimeViewToAuto("impulse"));
+            $("resetStepView").addEventListener("click", () => resetTimeViewToAuto("step"));
             ["wMin", "wMax", "magMin", "magMax", "phaseMin", "phaseMax", "impulseTMin", "impulseTMax", "impulseYMin", "impulseYMax", "stepTMin", "stepTMax", "stepYMin", "stepYMax"].forEach((id) => {
                 $(id).addEventListener("change", (e) => {
                     const v = Number(e.target.value);
