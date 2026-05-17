@@ -374,6 +374,8 @@
             timeCursorT: null,
             timeCursorPointerId: null,
             viewDrag: null,
+            plotTouchPoints: new Map(),
+            plotGesture: null,
             autoBodeDirty: true,
             autoImpulseDirty: true,
             autoStepDirty: true,
@@ -2405,14 +2407,14 @@
             return limitedRoot(mapper.reFromX(x), mapper.imFromY(y));
         }
 
-        function plotPointer(evt, svg, fallbackWidth, fallbackHeight) {
+        function plotPointFromClient(svg, clientX, clientY, fallbackWidth, fallbackHeight) {
             const rect = svg.getBoundingClientRect();
             if (!(rect.width > 0) || !(rect.height > 0)) return null;
             const viewBox = svg.viewBox.baseVal;
             const width = viewBox && viewBox.width ? viewBox.width : fallbackWidth;
             const height = viewBox && viewBox.height ? viewBox.height : fallbackHeight;
-            const x = (evt.clientX - rect.left) / rect.width * width;
-            const y = (evt.clientY - rect.top) / rect.height * height;
+            const x = (clientX - rect.left) / rect.width * width;
+            const y = (clientY - rect.top) / rect.height * height;
             const plotW = Math.max(1, width - PLOT.left - PLOT.right);
             const plotH = Math.max(1, height - PLOT.top - PLOT.bottom);
             return {
@@ -2425,6 +2427,10 @@
                 xRatio: clamp((x - PLOT.left) / plotW, 0, 1),
                 yRatio: clamp((y - PLOT.top) / plotH, 0, 1)
             };
+        }
+
+        function plotPointer(evt, svg, fallbackWidth, fallbackHeight) {
+            return plotPointFromClient(svg, evt.clientX, evt.clientY, fallbackWidth, fallbackHeight);
         }
 
         function panLinearRange(min, max, deltaPixels, plotPixels) {
@@ -2639,6 +2645,240 @@
             render();
         }
 
+        function plotFallbackSize(type) {
+            return type === "bode"
+                ? { width: 800, height: 240 }
+                : { width: 700, height: 260 };
+        }
+
+        function plotTouchMap(svg) {
+            if (!state.plotTouchPoints.has(svg.id)) {
+                state.plotTouchPoints.set(svg.id, new Map());
+            }
+            return state.plotTouchPoints.get(svg.id);
+        }
+
+        function clearPlotCursors(type) {
+            if (type === "bode") {
+                state.bodeCursorPointerId = null;
+                state.bodeCursorW = null;
+            } else {
+                state.timeCursorPointerId = null;
+                state.timeCursorKind = null;
+                state.timeCursorT = null;
+            }
+        }
+
+        function plotTouchPoint(svg, touch, type) {
+            const fallback = plotFallbackSize(type);
+            return plotPointFromClient(svg, touch.clientX, touch.clientY, fallback.width, fallback.height);
+        }
+
+        function firstTwoTouchEntries(touches) {
+            return Array.from(touches.entries()).slice(0, 2);
+        }
+
+        function startPlotGesture(type, svg) {
+            const touches = plotTouchMap(svg);
+            const entries = firstTwoTouchEntries(touches);
+            if (entries.length < 2) return false;
+            const fallback = plotFallbackSize(type);
+            const p1 = plotTouchPoint(svg, entries[0][1], type);
+            const p2 = plotTouchPoint(svg, entries[1][1], type);
+            if (!p1 || !p2) return false;
+            const xDistance = Math.abs(p2.x - p1.x);
+            const yDistance = Math.abs(p2.y - p1.y);
+            if (!(xDistance > EPS) && !(yDistance > EPS)) return false;
+            const centerClient = {
+                clientX: (entries[0][1].clientX + entries[1][1].clientX) / 2,
+                clientY: (entries[0][1].clientY + entries[1][1].clientY) / 2
+            };
+            const center = plotPointFromClient(svg, centerClient.clientX, centerClient.clientY, fallback.width, fallback.height);
+            if (!center) return false;
+            state.plotGesture = {
+                type,
+                kind: type === "bode" ? bodeKindFromPlot(svg) : timeKindFromPlot(svg),
+                svgId: svg.id,
+                pointerIds: entries.map(([pointerId]) => pointerId),
+                startCenter: center,
+                startXDistance: xDistance,
+                startYDistance: yDistance,
+                ranges: { ...state.ranges }
+            };
+            state.viewDrag = null;
+            clearPlotCursors(type);
+            render();
+            return true;
+        }
+
+        function applyBodeGesture(gesture, center, scaleX, scaleY) {
+            const r = state.ranges;
+            [r.wMin, r.wMax] = zoomLogRange(
+                gesture.ranges.wMin,
+                gesture.ranges.wMax,
+                gesture.startCenter.xRatio,
+                scaleX
+            );
+            [r.wMin, r.wMax] = panLogRange(r.wMin, r.wMax, center.x - gesture.startCenter.x, gesture.startCenter.plotW);
+            if (gesture.kind === "mag") {
+                [r.magMin, r.magMax] = zoomYRange(
+                    gesture.ranges.magMin,
+                    gesture.ranges.magMax,
+                    gesture.startCenter.yRatio,
+                    scaleY
+                );
+                [r.magMin, r.magMax] = panYRange(r.magMin, r.magMax, center.y - gesture.startCenter.y, gesture.startCenter.plotH);
+            } else {
+                [r.phaseMin, r.phaseMax] = zoomYRange(
+                    gesture.ranges.phaseMin,
+                    gesture.ranges.phaseMax,
+                    gesture.startCenter.yRatio,
+                    scaleY
+                );
+                [r.phaseMin, r.phaseMax] = panYRange(r.phaseMin, r.phaseMax, center.y - gesture.startCenter.y, gesture.startCenter.plotH);
+            }
+        }
+
+        function applyTimeGesture(gesture, center, scaleX, scaleY) {
+            const r = state.ranges;
+            if (gesture.kind === "impulse") {
+                [r.impulseTMin, r.impulseTMax] = zoomLinearRange(
+                    gesture.ranges.impulseTMin,
+                    gesture.ranges.impulseTMax,
+                    gesture.startCenter.xRatio,
+                    scaleX
+                );
+                [r.impulseTMin, r.impulseTMax] = panLinearRange(r.impulseTMin, r.impulseTMax, center.x - gesture.startCenter.x, gesture.startCenter.plotW);
+                [r.impulseYMin, r.impulseYMax] = zoomYRange(
+                    gesture.ranges.impulseYMin,
+                    gesture.ranges.impulseYMax,
+                    gesture.startCenter.yRatio,
+                    scaleY
+                );
+                [r.impulseYMin, r.impulseYMax] = panYRange(r.impulseYMin, r.impulseYMax, center.y - gesture.startCenter.y, gesture.startCenter.plotH);
+            } else {
+                [r.stepTMin, r.stepTMax] = zoomLinearRange(
+                    gesture.ranges.stepTMin,
+                    gesture.ranges.stepTMax,
+                    gesture.startCenter.xRatio,
+                    scaleX
+                );
+                [r.stepTMin, r.stepTMax] = panLinearRange(r.stepTMin, r.stepTMax, center.x - gesture.startCenter.x, gesture.startCenter.plotW);
+                [r.stepYMin, r.stepYMax] = zoomYRange(
+                    gesture.ranges.stepYMin,
+                    gesture.ranges.stepYMax,
+                    gesture.startCenter.yRatio,
+                    scaleY
+                );
+                [r.stepYMin, r.stepYMax] = panYRange(r.stepYMin, r.stepYMax, center.y - gesture.startCenter.y, gesture.startCenter.plotH);
+            }
+        }
+
+        function gestureAxisScale(startDistance, currentDistance) {
+            const MIN_AXIS_PINCH_DISTANCE = 8;
+            if (!(startDistance >= MIN_AXIS_PINCH_DISTANCE) || !(currentDistance >= MIN_AXIS_PINCH_DISTANCE)) return 1;
+            return clamp(startDistance / currentDistance, 0.05, 20);
+        }
+
+        function applyPlotGesture(svg) {
+            const gesture = state.plotGesture;
+            if (!gesture || gesture.svgId !== svg.id) return false;
+            const touches = plotTouchMap(svg);
+            const touchItems = gesture.pointerIds.map((pointerId) => touches.get(pointerId));
+            if (touchItems.some((touch) => !touch)) return true;
+            const fallback = plotFallbackSize(gesture.type);
+            const p1 = plotTouchPoint(svg, touchItems[0], gesture.type);
+            const p2 = plotTouchPoint(svg, touchItems[1], gesture.type);
+            if (!p1 || !p2) return true;
+            const xDistance = Math.abs(p2.x - p1.x);
+            const yDistance = Math.abs(p2.y - p1.y);
+            const centerClient = {
+                clientX: (touchItems[0].clientX + touchItems[1].clientX) / 2,
+                clientY: (touchItems[0].clientY + touchItems[1].clientY) / 2
+            };
+            const center = plotPointFromClient(svg, centerClient.clientX, centerClient.clientY, fallback.width, fallback.height);
+            if (!center) return true;
+            const scaleX = gestureAxisScale(gesture.startXDistance, xDistance);
+            const scaleY = gestureAxisScale(gesture.startYDistance, yDistance);
+            if (gesture.type === "bode") {
+                applyBodeGesture(gesture, center, scaleX, scaleY);
+            } else {
+                applyTimeGesture(gesture, center, scaleX, scaleY);
+            }
+            render();
+            return true;
+        }
+
+        function plotTouchDown(e, type) {
+            e.preventDefault();
+            const svg = e.currentTarget;
+            const touches = plotTouchMap(svg);
+            touches.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
+            svg.setPointerCapture(e.pointerId);
+            if (touches.size >= 2) {
+                startPlotGesture(type, svg);
+                return true;
+            }
+            clearPlotCursors(type);
+            if (type === "bode") {
+                state.bodeCursorPointerId = e.pointerId;
+                setBodeCursorFromPointer(e, svg);
+            } else {
+                state.timeCursorPointerId = e.pointerId;
+                setTimeCursorFromPointer(e, svg);
+            }
+            return true;
+        }
+
+        function plotTouchMove(e, type) {
+            const svg = e.currentTarget;
+            const touches = plotTouchMap(svg);
+            if (!touches.has(e.pointerId)) return false;
+            e.preventDefault();
+            touches.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
+            if (applyPlotGesture(svg)) return true;
+            if (type === "bode" && state.bodeCursorPointerId === e.pointerId) {
+                setBodeCursorFromPointer(e, svg);
+                return true;
+            }
+            if (type === "time" && state.timeCursorPointerId === e.pointerId) {
+                setTimeCursorFromPointer(e, svg);
+                return true;
+            }
+            return true;
+        }
+
+        function plotTouchUp(e, type) {
+            const svg = e.currentTarget;
+            const touches = plotTouchMap(svg);
+            const hadTouch = touches.delete(e.pointerId);
+            if (!hadTouch) return false;
+            e.preventDefault();
+            if (svg.hasPointerCapture && svg.hasPointerCapture(e.pointerId)) {
+                svg.releasePointerCapture(e.pointerId);
+            }
+            if (state.plotGesture && state.plotGesture.svgId === svg.id) {
+                state.plotGesture = null;
+                clearPlotCursors(type);
+                render();
+                return true;
+            }
+            if (type === "bode" && state.bodeCursorPointerId === e.pointerId) {
+                state.bodeCursorPointerId = null;
+                state.bodeCursorW = null;
+                render();
+                return true;
+            }
+            if (type === "time" && state.timeCursorPointerId === e.pointerId) {
+                state.timeCursorPointerId = null;
+                state.timeCursorKind = null;
+                state.timeCursorT = null;
+                render();
+                return true;
+            }
+            return true;
+        }
+
         function openHelpModal() {
             $("helpModal").classList.remove("hidden");
             $("helpModal").classList.add("flex");
@@ -2846,6 +3086,10 @@
         }
 
         function bodePointerDown(e) {
+            if (e.pointerType === "touch") {
+                plotTouchDown(e, "bode");
+                return;
+            }
             if (e.button === 2) {
                 e.preventDefault();
                 startBodeViewDrag(e, e.currentTarget);
@@ -2859,12 +3103,17 @@
         }
 
         function bodePointerMove(e) {
+            if (e.pointerType === "touch") {
+                plotTouchMove(e, "bode");
+                return;
+            }
             if (applyBodeViewDrag(e, e.currentTarget)) return;
             if (state.bodeCursorPointerId !== e.pointerId) return;
             setBodeCursorFromPointer(e, e.currentTarget);
         }
 
         function bodePointerUp(e) {
+            if (e.pointerType === "touch" && plotTouchUp(e, "bode")) return;
             if (endViewDrag(e)) return;
             if (state.bodeCursorPointerId !== e.pointerId) return;
             state.bodeCursorPointerId = null;
@@ -2876,6 +3125,10 @@
         }
 
         function timePointerDown(e) {
+            if (e.pointerType === "touch") {
+                plotTouchDown(e, "time");
+                return;
+            }
             if (e.button === 2) {
                 e.preventDefault();
                 startTimeViewDrag(e, e.currentTarget);
@@ -2889,12 +3142,17 @@
         }
 
         function timePointerMove(e) {
+            if (e.pointerType === "touch") {
+                plotTouchMove(e, "time");
+                return;
+            }
             if (applyTimeViewDrag(e, e.currentTarget)) return;
             if (state.timeCursorPointerId !== e.pointerId) return;
             setTimeCursorFromPointer(e, e.currentTarget);
         }
 
         function timePointerUp(e) {
+            if (e.pointerType === "touch" && plotTouchUp(e, "time")) return;
             if (endViewDrag(e)) return;
             if (state.timeCursorPointerId !== e.pointerId) return;
             state.timeCursorPointerId = null;
