@@ -43,7 +43,7 @@
                 </svg>
             </div>
             <h1 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-600">bode-sketch</h1>
-            <span class="text-xs font-semibold text-slate-400">v1.2</span>
+            <span class="text-xs font-semibold text-slate-400">v1.3</span>
             <span class="hidden sm:inline text-xs text-slate-500">
                 by <a href="https://github.com/many-question" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-700 hover:underline">many_question</a> with Codex
             </span>
@@ -323,7 +323,10 @@
                         <span class="w-3 h-3 rounded-full border-2 border-green-500 inline-block"></span>
                         零点 (Zeros) <span id="zeroCount" class="text-slate-400"></span>
                     </h2>
-                    <button id="addZero" class="text-xs bg-green-50 text-green-600 border border-green-200 hover:bg-green-100 px-2 py-1 rounded flex items-center gap-1 transition-colors">添加</button>
+                    <div class="flex items-center gap-2">
+                        <button id="addZero" class="text-xs bg-green-50 text-green-600 border border-green-200 hover:bg-green-100 px-2 py-1 rounded flex items-center gap-1 transition-colors">添加</button>
+                        <button id="clearZeros" class="text-xs bg-white text-slate-500 border border-slate-200 hover:border-green-200 hover:text-green-700 px-2 py-1 rounded transition-colors">清空</button>
+                    </div>
                 </div>
                 <div id="zeroList" class="space-y-2"></div>
             </section>
@@ -334,7 +337,10 @@
                         <span class="w-3 h-3 flex items-center justify-center text-red-500 font-bold text-lg leading-none mt-[-2px]">×</span>
                         极点 (Poles) <span id="poleCount" class="text-slate-400"></span>
                     </h2>
-                    <button id="addPole" class="text-xs bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 px-2 py-1 rounded flex items-center gap-1 transition-colors">添加</button>
+                    <div class="flex items-center gap-2">
+                        <button id="addPole" class="text-xs bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 px-2 py-1 rounded flex items-center gap-1 transition-colors">添加</button>
+                        <button id="clearPoles" class="text-xs bg-white text-slate-500 border border-slate-200 hover:border-red-200 hover:text-red-700 px-2 py-1 rounded transition-colors">清空</button>
+                    </div>
                 </div>
                 <div id="poleList" class="space-y-2"></div>
             </section>
@@ -404,6 +410,22 @@
             if (id === "autoTimeStep") state.autoStepDirty = true;
         }
 
+        function markSelectionChanged() {
+            const r = state.ranges;
+            if ((r.autoFreq || r.autoMag || r.autoPhase) && !state.autoBodeViewOverridden) state.autoBodeDirty = true;
+            if (r.autoTimeImpulse && !state.autoImpulseViewOverridden) state.autoImpulseDirty = true;
+            if (r.autoTimeStep && !state.autoStepViewOverridden) state.autoStepDirty = true;
+        }
+
+        function setSelected(selection) {
+            const next = selection && selection.kind && selection.id ? { kind: selection.kind, id: selection.id } : null;
+            const changed = !state.selected !== !next
+                || (state.selected && next && (state.selected.kind !== next.kind || state.selected.id !== next.id));
+            state.selected = next;
+            if (changed) markSelectionChanged();
+            return changed;
+        }
+
         function limitedRoot(re, im = 0) {
             const safeRe = Number.isFinite(re) ? re : 0;
             const safeIm = Math.abs(Number.isFinite(im) ? im : 0);
@@ -444,7 +466,7 @@
                 newEntry("pole", -5, 0),
                 newEntry("pole", -5, 31.22)
             ];
-            state.selected = null;
+            setSelected(null);
             state.mode = "sketch";
             state.pzLogScale = false;
             state.pzAddMode = null;
@@ -779,7 +801,7 @@
             const poleEntries = poleSpecs.map((item) => newEntry("pole", item.re, item.im));
             state.zeros = zeroEntries;
             state.poles = poleEntries;
-            state.selected = null;
+            setSelected(null);
             state.pzAddMode = null;
             state.drag = null;
             state.pzDragMapper = null;
@@ -967,11 +989,22 @@
             const rawPhase = [];
             const mag = freqs.map((w) => {
                 const h = hAt(w, state.zeros, state.poles, k);
-                rawPhase.push(cArg(h) * 180 / Math.PI);
+                rawPhase.push(phaseAt(w, state.zeros, state.poles, k));
                 const amp = cAbs(h);
                 return 20 * Math.log10(Math.max(amp, 1e-18));
             });
             return { mag, phase: unwrap(rawPhase) };
+        }
+
+        function phaseAt(w, zeroEntries = state.zeros, poleEntries = state.poles, k = gainK()) {
+            let phase = k < 0 ? 180 : 0;
+            zeroEntries.forEach((entry) => {
+                phase += cArg(factorValue(entry, w)) * 180 / Math.PI;
+            });
+            poleEntries.forEach((entry) => {
+                phase -= cArg(factorValue(entry, w)) * 180 / Math.PI;
+            });
+            return phase;
         }
 
         function firstOrderSketchTerm(w, w0, sign, order) {
@@ -1092,7 +1125,7 @@
             if (!freqs.length) return { mag: [], phase: [] };
             const anchorW = options.anchorW || freqs[0];
             const anchor = 20 * Math.log10(Math.max(cAbs(hAt(anchorW, zeroEntries, poleEntries, k)), 1e-18));
-            const startPhase = cArg(hAt(anchorW, zeroEntries, poleEntries, k)) * 180 / Math.PI;
+            const startPhase = phaseAt(anchorW, zeroEntries, poleEntries, k);
             const includePeaking = options.includePeaking !== false;
             const entries = [
                 ...entryMultiplicityGroups(zeroEntries).map((group) => ({ entry: group.entry, kind: "zero", multiplicity: group.multiplicity })),
@@ -1450,7 +1483,7 @@
             const rawPhase = [];
             const mag = freqs.map((w) => {
                 const h = hAt(w, zeroEntries, poleEntries, k);
-                rawPhase.push(cArg(h) * 180 / Math.PI);
+                rawPhase.push(phaseAt(w, zeroEntries, poleEntries, k));
                 return 20 * Math.log10(Math.max(cAbs(h), 1e-18));
             });
             return { mag, phase: unwrap(rawPhase) };
@@ -1595,7 +1628,7 @@
             if (!validIncreasing(r.magMin, r.magMax)) [r.magMin, r.magMax] = niceRange([...exact.mag, ...active.mag], 10);
             if (!validIncreasing(r.phaseMin, r.phaseMax)) [r.phaseMin, r.phaseMax] = niceRange([...exact.phase, ...active.phase, ...singleEntryPhaseRanges(exactFreqs)], 10);
             state.autoBodeDirty = false;
-            return { freqs: activeFreqs, exactFreqs, activeFreqs, sketchFreqs, exact, active };
+            return { freqs: activeFreqs, exactFreqs, activeFreqs, sketchFreqs, exact, active, refreshAuto };
         }
 
         function defaultTimeMax() {
@@ -1985,16 +2018,27 @@
         }
 
         function renderList(kind, entries, root) {
+            const selectedGroup = state.selected && state.selected.kind === kind ? selectedEntryGroup() : null;
             root.innerHTML = entries.map((entry, index) => {
                 const selected = state.selected && state.selected.kind === kind && state.selected.id === entry.id;
+                const duplicateHighlighted = !selected && selectedGroup && selectedGroup.entries.some((item) => item.id === entry.id);
                 const color = kind === "zero" ? "green" : "red";
-                const border = selected ? "border-blue-400 bg-blue-50 shadow-sm" : `border-slate-200 bg-white hover:border-${color}-300`;
+                const border = selected
+                    ? "border-blue-400 bg-blue-50 shadow-sm"
+                    : duplicateHighlighted
+                        ? "border-blue-200 bg-blue-50"
+                        : `border-slate-200 bg-white hover:border-${color}-300`;
+                const labelClass = selected
+                    ? "text-blue-700 bg-blue-100"
+                    : duplicateHighlighted
+                        ? "text-blue-600 bg-blue-50"
+                        : "text-slate-700 bg-slate-100";
                 const label = entryLabel(kind, index, entry);
                 const q = qOf(entry);
                 return `
                     <div class="entry-card border ${border} rounded p-2 text-sm transition-colors cursor-pointer group" data-kind="${kind}" data-id="${entry.id}">
                         <div class="flex justify-between items-center mb-2">
-                            <span class="text-xs font-medium ${selected ? "text-blue-700 bg-blue-100" : "text-slate-700 bg-slate-100"} px-1.5 py-0.5 rounded">
+                            <span class="text-xs font-medium ${labelClass} px-1.5 py-0.5 rounded">
                                 ${label} ${entry.im > EPS ? "(复共轭)" : "(实)"}
                             </span>
                             <div class="flex items-center gap-1.5 ${selected ? "" : "opacity-0 group-hover:opacity-100"} transition-opacity">
@@ -2454,6 +2498,14 @@
                     phaseOffset: contribution.phaseOffset
                 })
                 : null;
+            if (bode.refreshAuto && contribution) {
+                const magValues = [...fullReference.mag, ...contribution.mag];
+                const phaseValues = [...fullReference.phase, ...contribution.phase, ...singleEntryPhaseRanges(bode.exactFreqs)];
+                if (noPeakingContribution) magValues.push(...noPeakingContribution.mag);
+                if (state.ranges.autoMag) [state.ranges.magMin, state.ranges.magMax] = niceRange(magValues, 10);
+                if (state.ranges.autoPhase) [state.ranges.phaseMin, state.ranges.phaseMax] = niceRange(phaseValues, 10);
+                updateRangeInputs();
+            }
             const magSeries = [];
             const phaseSeries = [];
             const referenceMagDb = 20 * Math.log10(Math.max(Math.abs(targetGainSigned()), 1e-18));
@@ -2534,7 +2586,7 @@
         }
 
         function togglePzAddMode(kind) {
-            state.selected = null;
+            setSelected(null);
             state.drag = null;
             state.pzDragMapper = null;
             state.pzAddMode = state.pzAddMode === kind ? null : kind;
@@ -2547,7 +2599,7 @@
             list.push(entry);
             markTransferChanged();
             state.pzAddMode = null;
-            state.selected = { kind, id: entry.id };
+            setSelected({ kind, id: entry.id });
             render();
         }
 
@@ -2558,7 +2610,7 @@
             const isReal = root.im <= EPS || Math.abs(root.re) / Math.max(root.im, EPS) > 20;
             list.push(newEntry(kind, root.re, isReal ? 0 : root.im));
             markTransferChanged();
-            state.selected = null;
+            setSelected(null);
             state.pzAddMode = null;
             render();
         }
@@ -2571,7 +2623,17 @@
                 markTransferChanged();
             }
             state.pzAddMode = null;
-            if (state.selected && state.selected.kind === kind && state.selected.id === id) state.selected = null;
+            if (state.selected && state.selected.kind === kind && state.selected.id === id) setSelected(null);
+            render();
+        }
+
+        function clearEntries(kind) {
+            const list = kind === "zero" ? state.zeros : state.poles;
+            if (!list.length) return;
+            list.length = 0;
+            if (state.selected && state.selected.kind === kind) setSelected(null);
+            state.pzAddMode = null;
+            markTransferChanged();
             render();
         }
 
@@ -2590,7 +2652,7 @@
             }
             markTransferChanged();
             state.pzAddMode = null;
-            state.selected = { kind, id };
+            setSelected({ kind, id });
             render();
         }
 
@@ -2617,7 +2679,7 @@
             limitEntryRoot(entry);
             if (field === "q") setFromW0Q(entry, characteristicFrequency(entry), value);
             markTransferChanged();
-            state.selected = { kind, id };
+            setSelected({ kind, id });
             render();
         }
 
@@ -3202,12 +3264,14 @@
             });
             $("modeExact").addEventListener("click", () => { state.mode = "exact"; render(); });
             $("modeSketch").addEventListener("click", () => { state.mode = "sketch"; render(); });
-            $("clearSelectionFromBode").addEventListener("click", () => { state.selected = null; render(); });
-            $("clearSelectionFromImpulse").addEventListener("click", () => { state.selected = null; render(); });
-            $("clearSelectionFromStep").addEventListener("click", () => { state.selected = null; render(); });
+            $("clearSelectionFromBode").addEventListener("click", () => { setSelected(null); render(); });
+            $("clearSelectionFromImpulse").addEventListener("click", () => { setSelected(null); render(); });
+            $("clearSelectionFromStep").addEventListener("click", () => { setSelected(null); render(); });
             $("pzLogScale").addEventListener("change", (e) => { state.pzLogScale = e.target.checked; render(); });
             $("addZero").addEventListener("click", () => addEntry("zero"));
             $("addPole").addEventListener("click", () => addEntry("pole"));
+            $("clearZeros").addEventListener("click", () => clearEntries("zero"));
+            $("clearPoles").addEventListener("click", () => clearEntries("pole"));
             $("wRef").addEventListener("change", (e) => {
                 const v = Number(e.target.value);
                 if (v > 0) {
@@ -3315,7 +3379,7 @@
                     && state.selected.kind === card.dataset.kind
                     && state.selected.id === card.dataset.id;
                 state.pzAddMode = null;
-                state.selected = alreadySelected ? null : { kind: card.dataset.kind, id: card.dataset.id };
+                setSelected(alreadySelected ? null : { kind: card.dataset.kind, id: card.dataset.id });
                 render();
             }
         }
@@ -3330,7 +3394,7 @@
             const input = e.target.closest(".entry-input");
             if (!input) return;
             state.pzAddMode = null;
-            state.selected = { kind: input.dataset.kind, id: input.dataset.id };
+            setSelected({ kind: input.dataset.kind, id: input.dataset.id });
         }
 
         function listKeyDown(e) {
@@ -3433,13 +3497,13 @@
             const marker = e.target.closest(".pz-marker");
             if (!marker) {
                 state.pzAddMode = null;
-                state.selected = null;
+                setSelected(null);
                 render();
                 return;
             }
             e.preventDefault();
             state.pzAddMode = null;
-            state.selected = { kind: marker.dataset.kind, id: marker.dataset.id };
+            setSelected({ kind: marker.dataset.kind, id: marker.dataset.id });
             state.pzDragMapper = state.pzLogScale ? null : pzMapper();
             state.drag = { kind: marker.dataset.kind, id: marker.dataset.id };
             $("pzMap").setPointerCapture(e.pointerId);
