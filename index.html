@@ -1622,6 +1622,12 @@
             return out;
         }
 
+        function cPowInt(value, exponent) {
+            let out = c(1, 0);
+            for (let i = 0; i < exponent; i++) out = cMul(out, value);
+            return out;
+        }
+
         function cloneRootGroups(groups) {
             return groups.map((group) => ({
                 root: c(group.root.re, group.root.im),
@@ -1712,6 +1718,21 @@
             return cMul(term.coefficient, cScale(cExp(c(term.root.re * ti, term.root.im * ti)), scale));
         }
 
+        function integratedTermTimeValue(term, ti) {
+            if (cAbs(term.root) <= EPS) {
+                return cMul(term.coefficient, c(Math.pow(ti, term.power) / factorial(term.power), 0));
+            }
+            const rootTime = cScale(term.root, -ti);
+            let series = c(0, 0);
+            for (let order = 0; order < term.power; order++) {
+                series = cAdd(series, cScale(cPowInt(rootTime, order), 1 / factorial(order)));
+            }
+            const exponential = cExp(c(term.root.re * ti, term.root.im * ti));
+            const bracket = cSub(cMul(exponential, series), c(1, 0));
+            const sign = term.power % 2 === 0 ? -1 : 1;
+            return cMul(term.coefficient, cScale(cDiv(bracket, cPowInt(term.root, term.power)), sign));
+        }
+
         function sampleTerms(terms, t, entryId = null) {
             return t.map((ti) => {
                 if (ti < 0) return 0;
@@ -1719,6 +1740,18 @@
                 terms.forEach((term) => {
                     if (!termBelongsToEntry(term, entryId)) return;
                     sum = cAdd(sum, termTimeValue(term, ti));
+                });
+                return Number.isFinite(sum.re) && Number.isFinite(sum.im) ? sum.re : NaN;
+            });
+        }
+
+        function sampleIntegratedTerms(terms, t, entryId = null) {
+            return t.map((ti) => {
+                if (ti < 0) return 0;
+                let sum = c(0, 0);
+                terms.forEach((term) => {
+                    if (!termBelongsToEntry(term, entryId)) return;
+                    sum = cAdd(sum, integratedTermTimeValue(term, ti));
                 });
                 return Number.isFinite(sum.re) && Number.isFinite(sum.im) ? sum.re : NaN;
             });
@@ -1740,6 +1773,20 @@
             return Number.isFinite(sum) ? sum : NaN;
         }
 
+        function integratedTermsFinalValue(terms, entryId = null) {
+            let sum = c(0, 0);
+            for (const term of terms) {
+                if (!termBelongsToEntry(term, entryId)) continue;
+                if (!Number.isFinite(term.coefficient.re) || !Number.isFinite(term.coefficient.im)) return NaN;
+                if (cAbs(term.coefficient) <= EPS) continue;
+                const root = term.root;
+                if (root.re > EPS || (Math.abs(root.re) <= EPS && Math.abs(root.im) > EPS)) return NaN;
+                if (cAbs(root) <= EPS) return NaN;
+                sum = cAdd(sum, cDiv(term.coefficient, cPowInt(cScale(root, -1), term.power)));
+            }
+            return Number.isFinite(sum.re) && Number.isFinite(sum.im) ? sum.re : NaN;
+        }
+
         function plotTimeResponse(kind, tMinOverride = 0, tMaxOverride = null) {
             const numOrder = state.zeros.reduce((sum, entry) => sum + entryOrder(entry), 0);
             const denOrder = state.poles.reduce((sum, entry) => sum + entryOrder(entry), 0);
@@ -1753,9 +1800,14 @@
             const selected = selectedEntry();
             const selectedPoleId = selected && selected.kind === "pole" ? selected.id : null;
             const y = sampleTerms(terms, t);
-            const modalY = selectedPoleId ? sampleTerms(terms, t, selectedPoleId) : null;
+            const modalImpulseTerms = selectedPoleId && kind === "step" ? responseTerms("impulse") : null;
+            const modalY = selectedPoleId
+                ? (kind === "step" ? sampleIntegratedTerms(modalImpulseTerms, t, selectedPoleId) : sampleTerms(terms, t, selectedPoleId))
+                : null;
             const finalValue = responseFinalValue(terms);
-            const modalFinalValue = selectedPoleId ? responseFinalValue(terms, selectedPoleId) : null;
+            const modalFinalValue = selectedPoleId
+                ? (kind === "step" ? integratedTermsFinalValue(modalImpulseTerms, selectedPoleId) : responseFinalValue(terms, selectedPoleId))
+                : null;
             return {
                 t,
                 y,
