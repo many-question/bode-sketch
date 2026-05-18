@@ -954,8 +954,8 @@
             for (let i = 0; i < phases.length; i++) {
                 if (i > 0) {
                     const delta = phases[i] + offset - out[i - 1];
-                    if (delta > 180) offset -= 360;
-                    if (delta < -180) offset += 360;
+                    if (delta > 180) offset -= 360 * Math.ceil((delta - 180) / 360);
+                    if (delta < -180) offset += 360 * Math.ceil((-180 - delta) / 360);
                 }
                 out.push(phases[i] + offset);
             }
@@ -1115,7 +1115,7 @@
                 mag.push(Number.isFinite(m) ? m : exact.mag[i]);
                 phase.push(Number.isFinite(p) ? p : exact.phase[i]);
             });
-            return { mag, phase: unwrap(phase) };
+            return { mag, phase };
         }
 
         function autoFrequencyRange() {
@@ -1599,13 +1599,19 @@
         }
 
         function defaultTimeMax() {
-            const roots = allRoots(state.poles);
-            const stableRates = roots.filter((p) => p.re < -EPS).map((p) => -p.re);
-            const growRates = roots.filter((p) => p.re > EPS).map((p) => p.re);
-            const undampedOsc = roots.filter((p) => Math.abs(p.re) <= EPS && Math.abs(p.im) > EPS).map((p) => Math.abs(p.im));
+            const rootGroups = actualRootGroups(state.poles);
+            const stableWindows = rootGroups
+                .filter((group) => group.root.re < -EPS)
+                .map((group) => (8 + 3 * Math.max(0, group.multiplicity - 1)) / -group.root.re);
+            const growWindows = rootGroups
+                .filter((group) => group.root.re > EPS)
+                .map((group) => (4 + Math.max(0, group.multiplicity - 1)) / group.root.re);
+            const undampedOsc = rootGroups
+                .filter((group) => Math.abs(group.root.re) <= EPS && Math.abs(group.root.im) > EPS)
+                .map((group) => Math.abs(group.root.im));
             let tMax = 10;
-            if (growRates.length) tMax = Math.min(20, Math.max(0.5, 4 / Math.max(...growRates)));
-            else if (stableRates.length) tMax = Math.min(1000, Math.max(0.1, 8 / Math.min(...stableRates)));
+            if (growWindows.length) tMax = Math.min(20, Math.max(0.5, Math.max(...growWindows)));
+            else if (stableWindows.length) tMax = Math.min(1000, Math.max(0.1, Math.max(...stableWindows)));
             if (undampedOsc.length) tMax = Math.max(tMax, Math.min(1000, 4 * 2 * Math.PI / Math.min(...undampedOsc)));
             return tMax;
         }
