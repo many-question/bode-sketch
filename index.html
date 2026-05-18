@@ -2082,6 +2082,8 @@
             drawSelectedPzOverlay(svg, mapper);
             drawPzEntries(svg, state.zeros, "zero", mapper.xFn, mapper.yFn);
             drawPzEntries(svg, state.poles, "pole", mapper.xFn, mapper.yFn);
+            drawPzMultiplicityLabels(svg, state.zeros, "zero", mapper.xFn, mapper.yFn);
+            drawPzMultiplicityLabels(svg, state.poles, "pole", mapper.xFn, mapper.yFn);
         }
 
         function drawPzGrid(svg, mapper) {
@@ -2266,6 +2268,41 @@
                         g.appendChild(svgEl("line", { x1: -7, y1: -7, x2: 7, y2: 7, stroke: selected ? "#2563eb" : "#ef4444", "stroke-width": 3, "stroke-linecap": "round" }));
                         g.appendChild(svgEl("line", { x1: -7, y1: 7, x2: 7, y2: -7, stroke: selected ? "#2563eb" : "#ef4444", "stroke-width": 3, "stroke-linecap": "round" }));
                     }
+                    svg.appendChild(g);
+                });
+            });
+        }
+
+        function drawPzMultiplicityLabels(svg, entries, kind, xFn, yFn) {
+            entryMultiplicityGroups(entries).forEach((group) => {
+                if (group.multiplicity <= 1) return;
+                const entry = group.entry;
+                const selected = state.selected
+                    && state.selected.kind === kind
+                    && group.entries.some((item) => item.id === state.selected.id);
+                const points = entry.im > EPS ? [entry.im, -entry.im] : [0];
+                points.forEach((im) => {
+                    const g = svgEl("g", {
+                        transform: `translate(${xFn(entry.re)}, ${yFn(im)})`,
+                        "pointer-events": "none"
+                    });
+                    g.appendChild(svgEl("circle", {
+                        cx: 11,
+                        cy: -11,
+                        r: 7,
+                        fill: "white",
+                        opacity: 0.85
+                    }));
+                    const text = svgEl("text", {
+                        x: 11,
+                        y: -8,
+                        "font-size": 10,
+                        "font-weight": 700,
+                        fill: selected ? "#2563eb" : (kind === "zero" ? "#16a34a" : "#dc2626"),
+                        "text-anchor": "middle"
+                    });
+                    text.textContent = group.multiplicity;
+                    g.appendChild(text);
                     svg.appendChild(g);
                 });
             });
