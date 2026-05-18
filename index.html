@@ -475,9 +475,48 @@
         }
         function cAbs(a) { return Math.hypot(a.re, a.im); }
         function cArg(a) { return Math.atan2(a.im, a.re); }
+        function cScale(a, scalar) { return c(a.re * scalar, a.im * scalar); }
         function cExp(a) {
             const e = Math.exp(Math.max(-700, Math.min(700, a.re)));
             return c(e * Math.cos(a.im), e * Math.sin(a.im));
+        }
+
+        function sameRoot(a, b) {
+            return cAbs(cSub(a, b)) <= EPS * Math.max(1, cAbs(a), cAbs(b));
+        }
+
+        function entryRoot(entry) {
+            return c(entry.re, entry.im > EPS ? entry.im : 0);
+        }
+
+        function addRootGroup(groups, root, entry = null) {
+            let group = groups.find((item) => sameRoot(item.root, root));
+            if (!group) {
+                group = { root, entries: [], multiplicity: 0 };
+                groups.push(group);
+            }
+            if (entry) group.entries.push(entry);
+            group.multiplicity += 1;
+            return group;
+        }
+
+        function entryMultiplicityGroups(entries) {
+            const groups = [];
+            entries.forEach((entry) => {
+                const group = addRootGroup(groups, entryRoot(entry), entry);
+                if (!group.entry) group.entry = entry;
+                group.kind = entry.kind;
+            });
+            return groups;
+        }
+
+        function actualRootGroups(entries) {
+            const groups = [];
+            entries.forEach((entry) => {
+                addRootGroup(groups, c(entry.re, entry.im > EPS ? entry.im : 0), entry);
+                if (entry.im > EPS) addRootGroup(groups, c(entry.re, -entry.im), entry);
+            });
+            return groups;
         }
 
         function allRoots(entries) {
@@ -871,6 +910,22 @@
             return out;
         }
 
+        function polyMultiplyComplex(a, b) {
+            const out = Array.from({ length: a.length + b.length - 1 }, () => c(0, 0));
+            for (let i = 0; i < a.length; i++) {
+                for (let j = 0; j < b.length; j++) out[i + j] = cAdd(out[i + j], cMul(a[i], b[j]));
+            }
+            return out;
+        }
+
+        function toComplexCoeffs(coeffs) {
+            return coeffs.map((coeff) => typeof coeff === "number" ? c(coeff, 0) : coeff);
+        }
+
+        function polyScaleComplex(coeffs, scalar) {
+            return coeffs.map((coeff) => cScale(coeff, scalar));
+        }
+
         function polyFromEntries(entries) {
             return entries.reduce((poly, entry) => {
                 if (entry.im > EPS) return polyMultiply(poly, [1, -2 * entry.re, entry.re * entry.re + entry.im * entry.im]);
@@ -951,22 +1006,22 @@
             };
         }
 
-        function sketchEntryMag(entry, kind, w) {
+        function sketchEntryMag(entry, kind, w, multiplicity = 1) {
             const wc = characteristicFrequency(entry);
-            const order = entry.im > EPS ? 2 : 1;
+            const order = (entry.im > EPS ? 2 : 1) * multiplicity;
             return firstOrderSketchTerm(w, wc, kind === "zero" ? 1 : -1, order);
         }
 
-        function sketchPeakDb(entry, kind) {
+        function sketchPeakDb(entry, kind, multiplicity = 1) {
             if (entry.im <= EPS) return 0;
             const q = qOf(entry);
             if (!Number.isFinite(q) || q <= EPS) return 0;
-            return (kind === "zero" ? -1 : 1) * 20 * Math.log10(q);
+            return multiplicity * (kind === "zero" ? -1 : 1) * 20 * Math.log10(q);
         }
 
-        function sketchEntryPhase(entry, kind, w) {
+        function sketchEntryPhase(entry, kind, w, multiplicity = 1) {
             const wc = characteristicFrequency(entry);
-            const order = entry.im > EPS ? 2 : 1;
+            const order = (entry.im > EPS ? 2 : 1) * multiplicity;
             const q = sketchQ(entry);
             const rootDirection = entry.re <= 0 ? 1 : -1;
             const transferDirection = kind === "zero" ? rootDirection : -rootDirection;
@@ -980,25 +1035,27 @@
             return y0 + (y1 - y0) * Math.max(0, Math.min(1, t));
         }
 
-        function sketchEntryMagCorner(entry, kind, w, includePeaking = true) {
-            if (!includePeaking || entry.im <= EPS) return sketchEntryMag(entry, kind, w);
+        function sketchEntryMagCorner(entry, kind, w, includePeaking = true, multiplicity = 1) {
+            if (!includePeaking || entry.im <= EPS) return sketchEntryMag(entry, kind, w, multiplicity);
             const bounds = sketchBounds(entry);
-            const lowMag = sketchEntryMag(entry, kind, bounds.lo);
-            const centerMag = sketchEntryMag(entry, kind, bounds.w0) + sketchPeakDb(entry, kind);
-            const highMag = sketchEntryMag(entry, kind, bounds.hi);
-            if (w <= bounds.lo) return sketchEntryMag(entry, kind, w);
+            const lowMag = sketchEntryMag(entry, kind, bounds.lo, multiplicity);
+            const centerMag = sketchEntryMag(entry, kind, bounds.w0, multiplicity) + sketchPeakDb(entry, kind, multiplicity);
+            const highMag = sketchEntryMag(entry, kind, bounds.hi, multiplicity);
+            if (w <= bounds.lo) return sketchEntryMag(entry, kind, w, multiplicity);
             if (w <= bounds.w0) return interpolateLogSegment(w, bounds.lo, lowMag, bounds.w0, centerMag);
             if (w <= bounds.hi) return interpolateLogSegment(w, bounds.w0, centerMag, bounds.hi, highMag);
-            return sketchEntryMag(entry, kind, w);
+            return sketchEntryMag(entry, kind, w, multiplicity);
         }
 
         function sketchEntryCorners(entry, kind, freqs, options = {}) {
             const includePeaking = options.includePeaking !== false;
+            const multiplicity = options.multiplicity || 1;
             return {
                 entry,
                 kind,
-                mag: freqs.map((w) => sketchEntryMagCorner(entry, kind, w, includePeaking)),
-                phase: freqs.map((w) => sketchEntryPhase(entry, kind, w))
+                multiplicity,
+                mag: freqs.map((w) => sketchEntryMagCorner(entry, kind, w, includePeaking, multiplicity)),
+                phase: freqs.map((w) => sketchEntryPhase(entry, kind, w, multiplicity))
             };
         }
 
@@ -1016,8 +1073,8 @@
         function sketchCornerFrequencies(zeroEntries = state.zeros, poleEntries = state.poles, wMin = state.ranges.wMin, wMax = state.ranges.wMax) {
             const corners = [];
             [
-                ...zeroEntries.map((entry) => ({ entry, kind: "zero" })),
-                ...poleEntries.map((entry) => ({ entry, kind: "pole" }))
+                ...entryMultiplicityGroups(zeroEntries).map((group) => ({ entry: group.entry, kind: "zero" })),
+                ...entryMultiplicityGroups(poleEntries).map((group) => ({ entry: group.entry, kind: "pole" }))
             ].forEach(({ entry }) => {
                 const bounds = sketchBounds(entry);
                 corners.push(bounds.lo, bounds.w0, bounds.hi);
@@ -1038,13 +1095,13 @@
             const startPhase = cArg(hAt(anchorW, zeroEntries, poleEntries, k)) * 180 / Math.PI;
             const includePeaking = options.includePeaking !== false;
             const entries = [
-                ...zeroEntries.map((entry) => ({ entry, kind: "zero" })),
-                ...poleEntries.map((entry) => ({ entry, kind: "pole" }))
+                ...entryMultiplicityGroups(zeroEntries).map((group) => ({ entry: group.entry, kind: "zero", multiplicity: group.multiplicity })),
+                ...entryMultiplicityGroups(poleEntries).map((group) => ({ entry: group.entry, kind: "pole", multiplicity: group.multiplicity }))
             ];
-            const components = entries.map(({ entry, kind }) => sketchEntryCorners(entry, kind, freqs, { includePeaking }));
-            const anchorTerms = entries.map(({ entry, kind }) => ({
-                mag: sketchEntryMagCorner(entry, kind, anchorW, includePeaking),
-                phase: sketchEntryPhase(entry, kind, anchorW)
+            const components = entries.map(({ entry, kind, multiplicity }) => sketchEntryCorners(entry, kind, freqs, { includePeaking, multiplicity }));
+            const anchorTerms = entries.map(({ entry, kind, multiplicity }) => ({
+                mag: sketchEntryMagCorner(entry, kind, anchorW, includePeaking, multiplicity),
+                phase: sketchEntryPhase(entry, kind, anchorW, multiplicity)
             }));
             const mag = [];
             const phase = [];
@@ -1479,11 +1536,19 @@
             });
         }
 
-        function selectedContribution(freqs, full, fullFreqs, mode, options = {}) {
+        function selectedEntryGroup() {
             const entry = selectedEntry();
             if (!entry) return null;
-            const zeroEntries = entry.kind === "zero" ? [entry] : [];
-            const poleEntries = entry.kind === "pole" ? [entry] : [];
+            const groups = entryMultiplicityGroups(indexEntries(entry.kind));
+            return groups.find((group) => group.entries.some((item) => item.id === entry.id)) || null;
+        }
+
+        function selectedContribution(freqs, full, fullFreqs, mode, options = {}) {
+            const entry = selectedEntry();
+            const group = selectedEntryGroup();
+            if (!entry || !group) return null;
+            const zeroEntries = entry.kind === "zero" ? group.entries : [];
+            const poleEntries = entry.kind === "pole" ? group.entries : [];
             const exact = bodeExactFor(freqs, zeroEntries, poleEntries, 1);
             const contribution = mode === "sketch"
                 ? bodeSketch(freqs, exact, zeroEntries, poleEntries, 1, {
@@ -1505,11 +1570,11 @@
 
         function singleEntryPhaseRanges(freqs) {
             const phases = [];
-            state.zeros.forEach((entry) => {
-                phases.push(...bodeExactFor(freqs, [entry], [], 1).phase);
+            entryMultiplicityGroups(state.zeros).forEach((group) => {
+                phases.push(...bodeExactFor(freqs, group.entries, [], 1).phase);
             });
-            state.poles.forEach((entry) => {
-                phases.push(...bodeExactFor(freqs, [], [entry], 1).phase);
+            entryMultiplicityGroups(state.poles).forEach((group) => {
+                phases.push(...bodeExactFor(freqs, [], group.entries, 1).phase);
             });
             return phases;
         }
@@ -1545,88 +1610,135 @@
             return tMax;
         }
 
-        function poleRootModes() {
-            const modes = [];
-            state.poles.forEach((entry) => {
-                modes.push({ entry, root: c(entry.re, entry.im) });
-                if (entry.im > EPS) modes.push({ entry, root: c(entry.re, -entry.im) });
+        function factorial(n) {
+            let out = 1;
+            for (let i = 2; i <= n; i++) out *= i;
+            return out;
+        }
+
+        function cloneRootGroups(groups) {
+            return groups.map((group) => ({
+                root: c(group.root.re, group.root.im),
+                entries: [...group.entries],
+                multiplicity: group.multiplicity
+            }));
+        }
+
+        function poleRootGroups(extraRoots = []) {
+            const groups = cloneRootGroups(actualRootGroups(state.poles));
+            extraRoots.forEach((root) => addRootGroup(groups, root));
+            return groups;
+        }
+
+        function numeratorPolynomialCoeffs() {
+            return polyScaleComplex(toComplexCoeffs(polyFromEntries(state.zeros)), gainK());
+        }
+
+        function polyFromRootGroups(groups, skipIndex = -1) {
+            let poly = [c(1, 0)];
+            groups.forEach((group, index) => {
+                if (index === skipIndex) return;
+                for (let i = 0; i < group.multiplicity; i++) {
+                    poly = polyMultiplyComplex(poly, [c(1, 0), c(-group.root.re, -group.root.im)]);
+                }
             });
-            return modes;
+            return poly;
         }
 
-        function numeratorAtRoot(root) {
-            const product = state.zeros.reduce((acc, entry) => cMul(acc, rootFactorValue(entry, root)), c(1, 0));
-            return cMul(c(gainK(), 0), product);
+        function polyTaylorSeries(coeffs, center, order) {
+            let series = Array.from({ length: order + 1 }, () => c(0, 0));
+            coeffs.forEach((coeff) => {
+                const next = Array.from({ length: order + 1 }, () => c(0, 0));
+                for (let n = 0; n <= order; n++) {
+                    next[n] = cAdd(next[n], cMul(series[n], center));
+                    if (n + 1 <= order) next[n + 1] = cAdd(next[n + 1], series[n]);
+                }
+                next[0] = cAdd(next[0], coeff);
+                series = next;
+            });
+            return series;
         }
 
-        function denominatorDerivativeAtMode(modes, index) {
-            const root = modes[index].root;
-            return modes.reduce((acc, mode, i) => {
-                if (i === index) return acc;
-                return cMul(acc, cSub(root, mode.root));
-            }, c(1, 0));
+        function divideSeries(numerator, denominator, order) {
+            const out = [];
+            for (let n = 0; n <= order; n++) {
+                let value = numerator[n] || c(0, 0);
+                for (let i = 1; i <= n; i++) {
+                    value = cSub(value, cMul(denominator[i] || c(0, 0), out[n - i]));
+                }
+                out[n] = cDiv(value, denominator[0]);
+            }
+            return out;
         }
 
-        function modeResidues(modes) {
-            return modes.map((mode, index) => cDiv(numeratorAtRoot(mode.root), denominatorDerivativeAtMode(modes, index)));
+        function partialFractionTerms(groups, numeratorCoeffs) {
+            const terms = [];
+            groups.forEach((group, groupIndex) => {
+                const order = group.multiplicity - 1;
+                const denWithoutGroup = polyFromRootGroups(groups, groupIndex);
+                const numeratorSeries = polyTaylorSeries(numeratorCoeffs, group.root, order);
+                const denominatorSeries = polyTaylorSeries(denWithoutGroup, group.root, order);
+                const quotientSeries = divideSeries(numeratorSeries, denominatorSeries, order);
+                for (let power = 1; power <= group.multiplicity; power++) {
+                    terms.push({
+                        root: group.root,
+                        power,
+                        coefficient: quotientSeries[group.multiplicity - power] || c(0, 0),
+                        group
+                    });
+                }
+            });
+            return terms;
         }
 
-        function pairImpulseValue(root, residue, ti) {
-            const e = Math.exp(Math.max(-700, Math.min(700, root.re * ti)));
-            const angle = root.im * ti;
-            return 2 * e * (residue.re * Math.cos(angle) - residue.im * Math.sin(angle));
+        function responseTerms(kind) {
+            const groups = poleRootGroups(kind === "step" ? [c(0, 0)] : []);
+            return partialFractionTerms(groups, numeratorPolynomialCoeffs());
         }
 
-        function realModeImpulseValue(root, residue, ti) {
-            return cMul(residue, cExp(c(root.re * ti, 0))).re;
+        function termBelongsToEntry(term, entryId) {
+            return !entryId || term.group.entries.some((entry) => entry.id === entryId);
         }
 
-        function pairStepValue(root, residue, ti) {
-            const expMinusOne = cSub(cExp(c(root.re * ti, root.im * ti)), c(1, 0));
-            return 2 * cMul(residue, cDiv(expMinusOne, root)).re;
+        function termTimeValue(term, ti) {
+            const order = term.power - 1;
+            const scale = Math.pow(ti, order) / factorial(order);
+            return cMul(term.coefficient, cScale(cExp(c(term.root.re * ti, term.root.im * ti)), scale));
         }
 
-        function realModeStepValue(root, residue, ti) {
-            if (Math.abs(root.re) <= EPS && Math.abs(root.im) <= EPS) return residue.re * ti;
-            const expMinusOne = cSub(cExp(c(root.re * ti, 0)), c(1, 0));
-            return cMul(residue, cDiv(expMinusOne, root)).re;
+        function sampleTerms(terms, t, entryId = null) {
+            return t.map((ti) => {
+                if (ti < 0) return 0;
+                let sum = c(0, 0);
+                terms.forEach((term) => {
+                    if (!termBelongsToEntry(term, entryId)) return;
+                    sum = cAdd(sum, termTimeValue(term, ti));
+                });
+                return Number.isFinite(sum.re) && Number.isFinite(sum.im) ? sum.re : NaN;
+            });
         }
 
-        function responseFinalValue(kind, modes, residues, entryId = null) {
+        function responseFinalValue(terms, entryId = null) {
             let sum = 0;
-            for (let i = 0; i < modes.length; i++) {
-                const mode = modes[i];
-                if (entryId && mode.entry.id !== entryId) continue;
-                const root = mode.root;
-                const residue = residues[i];
-                if (!Number.isFinite(residue.re) || !Number.isFinite(residue.im)) return NaN;
+            for (const term of terms) {
+                if (!termBelongsToEntry(term, entryId)) continue;
+                if (!Number.isFinite(term.coefficient.re) || !Number.isFinite(term.coefficient.im)) return NaN;
+                if (cAbs(term.coefficient) <= EPS) continue;
+                const root = term.root;
                 if (root.re > EPS || (Math.abs(root.re) <= EPS && Math.abs(root.im) > EPS)) return NaN;
-                if (kind === "impulse") {
-                    if (Math.abs(root.re) <= EPS && Math.abs(root.im) <= EPS) sum += residue.re;
-                    continue;
-                }
                 if (Math.abs(root.re) <= EPS && Math.abs(root.im) <= EPS) {
-                    if (cAbs(residue) > EPS) return NaN;
-                    continue;
-                }
-                if (root.im > EPS) {
-                    sum -= 2 * cDiv(residue, root).re;
-                    if (i + 1 < modes.length && modes[i + 1].entry.id === mode.entry.id && modes[i + 1].root.im < -EPS) i++;
-                } else if (root.im < -EPS) {
-                    continue;
-                } else {
-                    sum -= cDiv(residue, root).re;
+                    if (term.power > 1) return NaN;
+                    sum += term.coefficient.re;
                 }
             }
             return Number.isFinite(sum) ? sum : NaN;
         }
 
         function plotTimeResponse(kind, tMinOverride = 0, tMaxOverride = null) {
-            const modes = poleRootModes();
             const numOrder = state.zeros.reduce((sum, entry) => sum + entryOrder(entry), 0);
             const denOrder = state.poles.reduce((sum, entry) => sum + entryOrder(entry), 0);
             const isImproper = numOrder >= denOrder;
-            const residues = modeResidues(modes);
+            const terms = responseTerms(kind);
             const defaultT = defaultTimeMax();
             const tStart = Number.isFinite(tMinOverride) ? tMinOverride : 0;
             const tEnd = Number.isFinite(tMaxOverride) && tMaxOverride > tStart ? tMaxOverride : defaultT;
@@ -1634,38 +1746,14 @@
             const t = Array.from({ length: n }, (_, i) => tStart + (tEnd - tStart) * i / (n - 1));
             const selected = selectedEntry();
             const selectedPoleId = selected && selected.kind === "pole" ? selected.id : null;
-            const sampleResponse = (responseKind, entryId = null) => t.map((ti) => {
-                if (ti < 0) return 0;
-                let sum = 0;
-                for (let i = 0; i < modes.length; i++) {
-                    const mode = modes[i];
-                    if (entryId && mode.entry.id !== entryId) continue;
-                    const root = mode.root;
-                    if (root.im > EPS) {
-                        sum += responseKind === "impulse"
-                            ? pairImpulseValue(root, residues[i], ti)
-                            : pairStepValue(root, residues[i], ti);
-                        if (i + 1 < modes.length && modes[i + 1].entry.id === mode.entry.id && modes[i + 1].root.im < -EPS) i++;
-                    } else if (root.im < -EPS) {
-                        continue;
-                    } else {
-                        sum += responseKind === "impulse"
-                            ? realModeImpulseValue(root, residues[i], ti)
-                            : realModeStepValue(root, residues[i], ti);
-                    }
-                }
-                return Number.isFinite(sum) ? sum : NaN;
-            });
-            const impulse = sampleResponse("impulse");
-            const step = sampleResponse("step");
-            const modalImpulse = selectedPoleId ? sampleResponse("impulse", selectedPoleId) : null;
-            const modalStep = selectedPoleId ? sampleResponse("step", selectedPoleId) : null;
-            const finalValue = responseFinalValue(kind, modes, residues);
-            const modalFinalValue = selectedPoleId ? responseFinalValue(kind, modes, residues, selectedPoleId) : null;
+            const y = sampleTerms(terms, t);
+            const modalY = selectedPoleId ? sampleTerms(terms, t, selectedPoleId) : null;
+            const finalValue = responseFinalValue(terms);
+            const modalFinalValue = selectedPoleId ? responseFinalValue(terms, selectedPoleId) : null;
             return {
                 t,
-                y: kind === "impulse" ? impulse : step,
-                modalY: selectedPoleId ? (kind === "impulse" ? modalImpulse : modalStep) : null,
+                y,
+                modalY,
                 finalValue,
                 modalFinalValue,
                 tMax: defaultT,
