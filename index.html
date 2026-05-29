@@ -21,6 +21,11 @@
         }
         .plot-svg text { font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
         .tap-target { touch-action: none; }
+        .view-toggle { color: #64748b; background: #ffffff; border-color: #cbd5e1; }
+        .view-toggle:hover { background: #f8fafc; color: #334155; }
+        .view-toggle.active { color: #ffffff; background: #2563eb; border-color: #2563eb; }
+        .view-toggle.active:hover { background: #1d4ed8; color: #ffffff; }
+        #nyquistPlot text { user-select: none; -webkit-user-select: none; pointer-events: none; }
         details > summary { list-style: none; }
         details > summary::-webkit-details-marker { display: none; }
         #pzMap text,
@@ -43,9 +48,9 @@
                 </svg>
             </div>
             <h1 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-600">bode-sketch</h1>
-            <span class="text-xs font-semibold text-slate-400">v1.3</span>
+            <span class="text-xs font-semibold text-slate-400">v1.4</span>
             <span class="hidden sm:inline text-xs text-slate-500">
-                by <a href="https://github.com/many-question" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-700 hover:underline">many_question</a> with Codex
+                with Claude Code
             </span>
         </div>
         <div class="ml-auto hidden sm:flex items-center gap-4 text-sm">
@@ -69,6 +74,11 @@
                     <li>在右侧面板添加、删除或编辑零点和极点。</li>
                     <li>使用右上角的“导出传函”和“导入传函”按钮可以保存或读取 tf.yaml。</li>
                     <li>在零极点图中拖动对象可以调整位置。</li>
+                    <li>用左栏顶部的“视窗”开关可显示或隐藏波特图、奈奎斯特图、冲激响应、阶跃响应。</li>
+                    <li>奈奎斯特图为极坐标，半径可在右上角设置里切换对数(dB)/线性；滚轮缩放、不可平移；左键按住靠近曲线数据点会用红色空心点标出并与波特图光标联动。</li>
+                    <li>奈奎斯特图会画出正频率（红）与负频率镜像（浅红）的完整围线，并用半透明红填充“内部”（按环绕数 nonzero 规则，正反绕行自动抵消）。</li>
+                    <li>奈奎斯特图按 Nyquist 判据 <span class="font-mono">Z = N + P</span> 判定闭环稳定性：把 H(s) 视为单位负反馈的开环回路增益 L，N 为曲线顺时针环绕 −1 的圈数，P 为开环右半平面极点数，Z 为闭环右半平面极点数；Z=0 即闭环稳定。−1 点被环绕时变红，右上角给出 N、P、Z 与结论。</li>
+                    <li>jω 轴上的极点（积分器、纯虚极点对）用右半平面缩进圆弧处理，不计入 P；右半平面零点无需特殊处理。非真有理或增益过高致频率范围不足时会提示“判据不可靠”。</li>
                     <li>上方波特图支持精确模式和折线草绘模式。</li>
                     <li>点击零点或极点可查看该对象对波特图的贡献。</li>
                     <li>选中极点时，冲激响应和阶跃响应会高亮显示该极点对应的模态贡献。</li>
@@ -101,7 +111,16 @@
 
     <div class="flex-1 lg:min-h-0 flex flex-col lg:flex-row overflow-visible lg:overflow-hidden">
         <main class="flex-1 min-w-0 lg:min-h-0 flex flex-col overflow-visible lg:overflow-y-auto bg-slate-100 p-4 gap-4">
-            <section class="bg-white border border-slate-200 rounded-lg shadow-sm flex flex-col min-h-[480px] flex-[2]">
+            <div class="bg-white border border-slate-200 rounded-lg shadow-sm shrink-0 px-3 py-2 flex flex-wrap items-center gap-2">
+                <span class="text-xs font-semibold text-slate-500 tracking-wider mr-1">视窗</span>
+                <button id="viewToggleBode" data-view="bode" class="view-toggle px-3 py-1.5 text-xs rounded-md font-medium border transition-colors">波特图</button>
+                <button id="viewToggleNyquist" data-view="nyquist" class="view-toggle px-3 py-1.5 text-xs rounded-md font-medium border transition-colors">奈奎斯特图</button>
+                <button id="viewToggleImpulse" data-view="impulse" class="view-toggle px-3 py-1.5 text-xs rounded-md font-medium border transition-colors">冲激响应</button>
+                <button id="viewToggleStep" data-view="step" class="view-toggle px-3 py-1.5 text-xs rounded-md font-medium border transition-colors">阶跃响应</button>
+            </div>
+
+            <div id="topRow" class="flex flex-col xl:flex-row gap-4 xl:flex-[2] xl:min-h-[480px]">
+            <section id="bodeSection" class="bg-white border border-slate-200 rounded-lg shadow-sm flex flex-col flex-1 min-w-0 min-h-[420px] xl:min-h-0">
                 <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-3 shrink-0">
                     <div class="flex flex-wrap items-center gap-4">
                         <h2 class="font-medium text-slate-800">波特图 (Bode Plot)</h2>
@@ -114,7 +133,7 @@
                             <button id="clearSelectionFromBode" class="hover:text-blue-900 bg-white rounded-full px-1">×</button>
                         </div>
                     </div>
-                    <p class="ml-auto hidden lg:block text-xs text-slate-400 whitespace-nowrap">鼠标左键拖动创建光标，右键拖动视图，滚轮缩放</p>
+                    <p class="ml-auto hidden 2xl:block text-xs text-slate-400 whitespace-nowrap">鼠标左键拖动创建光标，右键拖动视图，滚轮缩放</p>
                     <button id="resetBodeView" class="hidden shrink-0 text-xs border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 px-2 py-1 rounded transition-colors">重置</button>
                     <details class="relative shrink-0">
                         <summary class="p-1.5 text-slate-600 bg-slate-100 border border-slate-200 rounded hover:bg-slate-200 transition-colors shadow-inner flex items-center justify-center cursor-pointer">
@@ -157,18 +176,54 @@
                         </div>
                     </details>
                 </div>
-                <div class="flex-1 p-4 flex flex-col gap-3">
-                    <div class="flex-1 min-h-[180px] relative border border-slate-200 rounded bg-white plot-grid">
+                <div class="flex-1 min-h-0 p-4 flex flex-col gap-3">
+                    <div class="flex-1 min-h-0 relative border border-slate-200 rounded bg-white plot-grid">
                         <svg id="magPlot" class="plot-svg tap-target absolute inset-0 w-full h-full" viewBox="0 0 800 240"></svg>
                     </div>
-                    <div class="flex-1 min-h-[180px] relative border border-slate-200 rounded bg-white plot-grid">
+                    <div class="flex-1 min-h-0 relative border border-slate-200 rounded bg-white plot-grid">
                         <svg id="phasePlot" class="plot-svg tap-target absolute inset-0 w-full h-full" viewBox="0 0 800 240"></svg>
                     </div>
                 </div>
             </section>
 
-            <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                <section class="bg-white border border-slate-200 rounded-lg shadow-sm flex flex-col min-h-[300px]">
+            <section id="nyquistSection" class="bg-white border border-slate-200 rounded-lg shadow-sm flex flex-col flex-1 min-w-0 min-h-[420px] xl:min-h-0">
+                <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-3 shrink-0">
+                    <div class="flex flex-wrap items-center gap-3 min-w-0">
+                        <h2 class="font-medium text-slate-800">奈奎斯特图 (Nyquist Plot)</h2>
+                    </div>
+                    <p class="ml-auto hidden 2xl:block text-xs text-slate-400 whitespace-nowrap">左键按住读取数据点，滚轮缩放（不可平移）</p>
+                    <button id="resetNyquistView" class="hidden shrink-0 text-xs border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 px-2 py-1 rounded transition-colors">重置</button>
+                    <details class="relative shrink-0">
+                        <summary class="p-1.5 text-slate-600 bg-slate-100 border border-slate-200 rounded hover:bg-slate-200 transition-colors shadow-inner flex items-center justify-center cursor-pointer">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 011.45.12l.773.774c.39.389.44 1.002.12 1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.397.505.71.93.78l.893.15c.543.09.94.56.94 1.109v1.094c0 .55-.397 1.02-.94 1.11l-.893.149c-.425.07-.765.383-.93.78-.165.398-.143.854.107 1.204l.527.738a1.125 1.125 0 01-.12 1.45l-.774.773a1.125 1.125 0 01-1.449.12l-.738-.527c-.35-.25-.806-.272-1.203-.107-.397.165-.71-.505-.781-.929l-.149.894c-.09.542-.56.94-1.11.94h-1.094c-.55 0-1.019-.398-1.11-.94l-.148-.894c-.071-.424-.384-.764-.781-.93-.398-.164-.854-.142-1.204.108l-.738.527c-.389.39-1.002.44-1.45.12l-.773-.774a1.125 1.125 0 01-.12-1.45l.527-.737c.25-.35.273-.806.108-1.204-.165-.397-.505-.71-.93-.78l-.894-.15c-.542-.09-.94-.56-.94-1.109v-1.094c0-.55.398-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.107-1.204l-.527-.738a1.125 1.125 0 01.12-1.45l.773-.773a1.125 1.125 0 011.45-.12l.737.527c.35.25.807.272 1.204.107.397-.165.71-.505.78-.929l.15-.894z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                        </summary>
+                        <div class="absolute right-0 top-full mt-2 w-56 bg-white border border-slate-200 rounded-lg shadow-xl z-30 p-3 text-xs">
+                            <h3 class="text-xs font-semibold text-slate-500 mb-3 border-b border-slate-100 pb-2">奈奎斯特半径标度</h3>
+                            <div class="flex bg-slate-100 p-1 rounded-md border border-slate-200">
+                                <button id="nyquistScaleLog" class="flex-1 px-3 py-1 text-xs rounded font-medium">对数 (dB)</button>
+                                <button id="nyquistScaleLinear" class="flex-1 px-3 py-1 text-xs rounded font-medium">线性</button>
+                            </div>
+                            <label class="mt-3 flex items-center gap-2 text-slate-600 cursor-pointer">
+                                <input id="nyquistFill" type="checkbox" class="rounded border-slate-300 text-red-600 focus:ring-red-500" checked>
+                                内部填充（半透明红，按环绕数计）
+                            </label>
+                            <p class="mt-2 text-slate-400 leading-5">对数模式半径对应波特图幅度 dB，圆心为最小幅度；黑点为 -1 (0 dB, 180°) 临界点，被环绕时变红。填充按环绕数 nonzero 规则，正反绕行自动抵消。右上角按 Nyquist 判据 <b>Z=N+P</b>（H 视为单位负反馈开环回路增益 L，N 取顺时针为正，P 为开环右半平面极点数）给出闭环稳定性；jω 轴极点用右半平面缩进圆弧处理；非真有理或增益过高致频率范围不足时判据不可靠。</p>
+                        </div>
+                    </details>
+                </div>
+                <div class="flex-1 min-h-0 p-4 flex flex-col">
+                    <div class="flex-1 min-h-0 relative border border-slate-200 rounded bg-white">
+                        <svg id="nyquistPlot" class="plot-svg tap-target absolute inset-0 w-full h-full" viewBox="0 0 360 360"></svg>
+                    </div>
+                </div>
+            </section>
+            </div>
+
+            <div id="bottomGrid" class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                <section id="impulseSection" class="bg-white border border-slate-200 rounded-lg shadow-sm flex flex-col min-h-[300px]">
                     <div class="px-4 py-2 border-b border-slate-100 flex items-center justify-between gap-2">
                         <div class="flex flex-wrap items-center gap-3 min-w-0">
                             <h2 class="font-medium text-slate-800 text-sm shrink-0">冲激响应 (Impulse Response)</h2>
@@ -218,7 +273,7 @@
                     </div>
                 </section>
 
-                <section class="bg-white border border-slate-200 rounded-lg shadow-sm flex flex-col min-h-[300px]">
+                <section id="stepSection" class="bg-white border border-slate-200 rounded-lg shadow-sm flex flex-col min-h-[300px]">
                     <div class="px-4 py-2 border-b border-slate-100 flex items-center justify-between gap-2">
                         <div class="flex flex-wrap items-center gap-3 min-w-0">
                             <h2 class="font-medium text-slate-800 text-sm shrink-0">阶跃响应 (Step Response)</h2>
@@ -364,6 +419,21 @@
             selected: null,
             mode: "sketch",
             pzLogScale: false,
+            views: { bode: true, nyquist: true, impulse: true, step: true },
+            nyquist: {
+                scale: "log",
+                fill: true,
+                radialMin: -60, radialMax: 40,
+                autoRadial: true,
+                radialDirty: true,
+                viewOverridden: false,
+                pointerId: null,
+                touchPoints: new Map(),
+                pinchStart: null,
+                dataMaxDb: 0, dataMaxLin: 1,
+                dataSecondMinDb: -50, dataSecondMinLin: 0
+            },
+            nyquistGeom: null,
             wRef: 1,
             gRef: 20,
             gainUnit: "db",
@@ -403,6 +473,8 @@
             state.autoBodeViewOverridden = false;
             state.autoImpulseViewOverridden = false;
             state.autoStepViewOverridden = false;
+            state.nyquist.radialDirty = true;
+            state.nyquist.viewOverridden = false;
         }
 
         function markTimeAutoDirty(id) {
@@ -470,6 +542,16 @@
             state.mode = "sketch";
             state.pzLogScale = false;
             state.pzAddMode = null;
+            state.views = { bode: true, nyquist: true, impulse: true, step: true };
+            state.nyquist.scale = "log";
+            state.nyquist.fill = true;
+            state.nyquist.autoRadial = true;
+            state.nyquist.radialDirty = true;
+            state.nyquist.viewOverridden = false;
+            state.nyquist.pointerId = null;
+            state.nyquist.touchPoints = new Map();
+            state.nyquist.pinchStart = null;
+            state.nyquistGeom = null;
             state.wRef = 1;
             state.gRef = 20;
             state.gainUnit = "db-pos";
@@ -1479,6 +1561,347 @@
             });
         }
 
+        const NYQUIST_LIN_MIN = Math.pow(10, -0.5); // ≈0.3162 (-10 dB)
+        const NYQUIST_LIN_MAX = Math.pow(10, 0.5);  // ≈3.1623 (+10 dB)
+        const NYQUIST_PICK_TOL = 22;                // 选点像素阈值
+
+        function niceStepValue(rough) {
+            if (!(rough > 0)) return 1;
+            const p = Math.pow(10, Math.floor(Math.log10(rough)));
+            const f = rough / p;
+            let nice;
+            if (f < 1.5) nice = 1;
+            else if (f < 3) nice = 2;
+            else if (f < 7) nice = 5;
+            else nice = 10;
+            return nice * p;
+        }
+
+        function nyquistRadialTicks(min, max, target = 5) {
+            const step = niceStepValue((max - min) / Math.max(1, target));
+            const ticks = [];
+            const start = Math.ceil(min / step - 1e-9) * step;
+            for (let v = start; v <= max + 1e-9 && ticks.length < 40; v += step) {
+                ticks.push(Math.abs(v) < 1e-9 ? 0 : v);
+            }
+            return { step, ticks };
+        }
+
+        function polygonWinding(poly, px, py) {
+            // 有符号转角求和 / 2π，给出闭合多边形绕 (px,py) 的环绕数（含正反抵消）
+            let total = 0;
+            for (let i = 0; i < poly.length; i++) {
+                const a = poly[i];
+                const b = poly[(i + 1) % poly.length];
+                const ax = a.x - px, ay = a.y - py;
+                const bx = b.x - px, by = b.y - py;
+                total += Math.atan2(ax * by - ay * bx, ax * bx + ay * by);
+            }
+            return Math.round(total / (2 * Math.PI));
+        }
+
+        // 构造含 jω 轴极点右半平面缩进的闭合奈奎斯特围线（复平面 {x:re,y:im}）。
+        // 每个 jω 极点处插入大半径圆弧（顺时针扫 m·π），使该极点被排除在围线之外，
+        // 从而 -1 的环绕数（及 Z=N+P 判据）对积分器/纯虚极点也成立。
+        function nyquistIndentedContour(points) {
+            if (points.length < 2) return [];
+            const axis = allRoots(state.poles).filter((r) => Math.abs(r.re) <= EPS);
+            const mOrigin = axis.filter((r) => Math.abs(r.im) <= EPS).length;
+            const posPoles = [];
+            axis.filter((r) => r.im > EPS).forEach((r) => {
+                const e = posPoles.find((x) => Math.abs(x.w0 - r.im) <= 1e-6 * Math.max(1, r.im));
+                if (e) e.m += 1; else posPoles.push({ w0: r.im, m: 1 });
+            });
+            posPoles.sort((a, b) => a.w0 - b.w0);
+            const Mmax = points.reduce((mx, p) => Math.max(mx, Math.hypot(p.re, p.im)), 1);
+            const Lc = (w) => { const h = hAt(w); return { x: h.re, y: h.im }; };
+            const pushArc = (arr, R, a0, m) => {
+                const steps = Math.max(8, Math.ceil(m * 16));
+                for (let s = 1; s <= steps; s++) {
+                    const a = a0 - m * Math.PI * s / steps; // 顺时针（RHP 缩进）
+                    arr.push({ x: R * Math.cos(a), y: R * Math.sin(a) });
+                }
+            };
+            const Ppos = [];
+            let pp = 0;
+            for (let i = 0; i < points.length; i++) {
+                Ppos.push({ x: points[i].re, y: points[i].im });
+                while (pp < posPoles.length && i + 1 < points.length
+                       && points[i].w < posPoles[pp].w0 && points[i + 1].w >= posPoles[pp].w0) {
+                    const w0 = posPoles[pp].w0, m = posPoles[pp].m;
+                    const d = Math.max(w0 * 1e-3, 1e-9);
+                    const lo = Lc(w0 - d), hi = Lc(w0 + d);
+                    const R = 10 * Math.max(Math.hypot(lo.x, lo.y), Math.hypot(hi.x, hi.y), Mmax);
+                    const aLo = Math.atan2(lo.y, lo.x);
+                    Ppos.push(lo, { x: R * Math.cos(aLo), y: R * Math.sin(aLo) });
+                    pushArc(Ppos, R, aLo, m);
+                    Ppos.push(hi);
+                    pp += 1;
+                }
+            }
+            const full = [];
+            for (let i = Ppos.length - 1; i >= 0; i--) full.push({ x: Ppos[i].x, y: -Ppos[i].y }); // 负频 = 共轭逆序
+            if (mOrigin > 0) {
+                const last = full[full.length - 1];
+                const R = 10 * Math.max(Math.hypot(last.x, last.y), Mmax);
+                const a0 = Math.atan2(last.y, last.x);
+                full.push({ x: R * Math.cos(a0), y: R * Math.sin(a0) });
+                pushArc(full, R, a0, mOrigin);
+            }
+            for (let i = 0; i < Ppos.length; i++) full.push(Ppos[i]);
+            return full;
+        }
+
+        function secondSmallest(values, fallback) {
+            let m1 = Infinity;
+            let m2 = Infinity;
+            values.forEach((v) => {
+                if (!Number.isFinite(v)) return;
+                if (v < m1) { m2 = m1; m1 = v; }
+                else if (v < m2) { m2 = v; }
+            });
+            if (Number.isFinite(m2)) return m2;
+            if (Number.isFinite(m1)) return m1;
+            return fallback;
+        }
+
+        function nyquistSweepRange() {
+            // 起点用波特图自动频率范围；但高增益严格真系统的 0dB 穿越/趋于原点可能远高于
+            // 极零点频率，需把高频端扩展到曲线衰减到接近原点（|H| 远小于 -1 的量级 1），
+            // 围线才能在原点附近正确闭合，包住/不包住 -1 才判得对。
+            let [w0, w1] = autoFrequencyRange();
+            if (!(w0 > 0)) w0 = 0.1;
+            if (!(w1 > w0)) w1 = w0 * 1000;
+            const k = gainK();
+            const strictlyProper = allRoots(state.poles).length > allRoots(state.zeros).length;
+            if (strictlyProper) {
+                let guard = 0;
+                while (w1 < 1e12 && guard++ < 80 && cAbs(hAt(w1, state.zeros, state.poles, k)) > 1e-2) w1 *= 10;
+                if (w1 > 1e12) w1 = 1e12;
+            }
+            const endMag = cAbs(hAt(w1, state.zeros, state.poles, k));
+            const truncated = strictlyProper && endMag > 0.1;
+            return { wMin: w0, wMax: w1, truncated };
+        }
+
+        function currentNyquist() {
+            const ny = state.nyquist;
+            const sweep = nyquistSweepRange();
+            const wMin = sweep.wMin;
+            const wMax = sweep.wMax;
+            ny.rangeTruncated = sweep.truncated;
+            const freqs = logspace(wMin, wMax, BODE_POINT_COUNT);
+            const k = gainK();
+            const magDb = [];
+            const magLin = [];
+            const ang = [];
+            freqs.forEach((w) => {
+                const h = hAt(w, state.zeros, state.poles, k);
+                const m = cAbs(h);
+                magLin.push(m);
+                magDb.push(20 * Math.log10(Math.max(m, 1e-18)));
+                ang.push(Math.atan2(h.im, h.re));
+            });
+            const finiteLin = magLin.filter(Number.isFinite);
+            const finiteDb = magDb.filter(Number.isFinite);
+            ny.dataMaxLin = finiteLin.length ? Math.max(...finiteLin) : 1;
+            ny.dataMaxDb = finiteDb.length ? Math.max(...finiteDb) : 0;
+            ny.dataSecondMinLin = secondSmallest(finiteLin, 0);
+            ny.dataSecondMinDb = secondSmallest(finiteDb, -50);
+            if (ny.radialDirty && ny.autoRadial && !ny.viewOverridden) {
+                if (ny.scale === "linear") {
+                    const minLin = finiteLin.length ? Math.min(...finiteLin) : 0;
+                    ny.radialMin = Math.min(minLin, NYQUIST_LIN_MIN);
+                    ny.radialMax = Math.max(ny.dataMaxLin * 1.2, NYQUIST_LIN_MAX);
+                } else {
+                    const minDb = finiteDb.length ? Math.min(...finiteDb) : -60;
+                    ny.radialMin = Math.min(minDb, -10);
+                    ny.radialMax = Math.max(ny.dataMaxDb + 10, 10);
+                }
+                if (!(ny.radialMax > ny.radialMin)) ny.radialMax = ny.radialMin + 1;
+                ny.radialDirty = false;
+            }
+            return { freqs, magDb, magLin, ang, wMin, wMax, radialMin: ny.radialMin, radialMax: ny.radialMax, scale: ny.scale, truncated: sweep.truncated };
+        }
+
+        function drawNyquistPlot(svg, ny) {
+            svg.innerHTML = "";
+            const vp = svgViewport(svg, 360, 360);
+            const width = vp.width;
+            const height = vp.height;
+            const pad = 32;
+            const cx = width / 2;
+            const cy = height / 2;
+            const maxR = Math.max(10, Math.min(width, height) / 2 - pad);
+            const span = ny.radialMax - ny.radialMin;
+            const radial = (v) => (!(span > 0) ? 0 : Math.max(0, (v - ny.radialMin) / span) * maxR);
+            const toXY = (v, angRad) => {
+                const r = radial(v);
+                return { x: cx + r * Math.cos(angRad), y: cy - r * Math.sin(angRad) };
+            };
+            svg.appendChild(svgEl("rect", { x: 0, y: 0, width, height, fill: "white" }));
+            const clipId = "nyquistClip";
+            const defs = svgEl("defs");
+            const clip = svgEl("clipPath", { id: clipId });
+            clip.appendChild(svgEl("circle", { cx, cy, r: maxR }));
+            defs.appendChild(clip);
+            svg.appendChild(defs);
+
+            // 角度辐线 + 标签
+            for (let deg = 0; deg < 360; deg += 30) {
+                const a = deg * Math.PI / 180;
+                svg.appendChild(svgEl("line", {
+                    x1: cx, y1: cy,
+                    x2: cx + maxR * Math.cos(a),
+                    y2: cy - maxR * Math.sin(a),
+                    stroke: "#eef2f7", "stroke-width": 1
+                }));
+                const lx = cx + (maxR + 14) * Math.cos(a);
+                const ly = cy - (maxR + 14) * Math.sin(a);
+                const lbl = svgEl("text", { x: lx, y: ly + 3, "font-size": 10, fill: "#94a3b8", "text-anchor": "middle" });
+                lbl.textContent = `${deg}°`;
+                svg.appendChild(lbl);
+            }
+
+            // 同心圆 + 半径刻度标签
+            const { ticks } = nyquistRadialTicks(ny.radialMin, ny.radialMax, 5);
+            ticks.forEach((v) => {
+                const r = radial(v);
+                if (r > 0.5) {
+                    svg.appendChild(svgEl("circle", { cx, cy, r, fill: "none", stroke: "#e2e8f0", "stroke-width": 1 }));
+                }
+                const txt = svgEl("text", {
+                    x: cx + 3,
+                    y: cy - r + (r > 0.5 ? -2 : 11),
+                    "font-size": 9,
+                    fill: "#94a3b8",
+                    "text-anchor": "start"
+                });
+                txt.textContent = ny.scale === "linear" ? fmt(v, 3) : `${fmt(v, 3)} dB`;
+                svg.appendChild(txt);
+            });
+            svg.appendChild(svgEl("circle", { cx, cy, r: maxR, fill: "none", stroke: "#cbd5e1", "stroke-width": 1 }));
+
+            // 奈奎斯特曲线（裁剪到外圈）：正频率红色实线，负频率（相位取反）浅红
+            const points = [];
+            const path = [];
+            const negPath = [];
+            ny.freqs.forEach((w, i) => {
+                const v = ny.scale === "linear" ? ny.magLin[i] : ny.magDb[i];
+                const a = ny.ang[i];
+                if (!Number.isFinite(v) || !Number.isFinite(a)) return;
+                const p = toXY(v, a);
+                const mlin = ny.magLin[i];
+                points.push({ w, x: p.x, y: p.y, re: mlin * Math.cos(a), im: mlin * Math.sin(a) });
+                path.push(`${path.length === 0 ? "M" : "L"} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`);
+                const pn = toXY(v, -a);
+                negPath.push(`${negPath.length === 0 ? "M" : "L"} ${pn.x.toFixed(2)} ${pn.y.toFixed(2)}`);
+            });
+
+            // 闭合围线（复平面，含 jω 轴极点的右半平面缩进弧）：用于内部填充与 -1 环绕判定
+            let nyqWinding = 0;
+            const windC = nyquistIndentedContour(points);
+            if (windC.length >= 3) {
+                if (state.nyquist.fill) {
+                    const fillD = windC.map((p, i) => {
+                        const m = Math.hypot(p.x, p.y);
+                        const v = ny.scale === "linear" ? m : 20 * Math.log10(Math.max(m, 1e-18));
+                        const s = toXY(v, Math.atan2(p.y, p.x));
+                        return `${i === 0 ? "M" : "L"} ${s.x.toFixed(2)} ${s.y.toFixed(2)}`;
+                    }).join(" ") + " Z";
+                    svg.appendChild(svgEl("path", {
+                        d: fillD,
+                        fill: "#ef4444",
+                        "fill-opacity": 0.13,
+                        "fill-rule": "nonzero",
+                        stroke: "none",
+                        "clip-path": `url(#${clipId})`
+                    }));
+                }
+                nyqWinding = polygonWinding(windC, -1, 0);
+            }
+
+            if (negPath.length) {
+                svg.appendChild(svgEl("path", {
+                    d: negPath.join(" "),
+                    fill: "none",
+                    stroke: "#fca5a5",
+                    "stroke-width": 2,
+                    "stroke-linejoin": "round",
+                    "stroke-linecap": "round",
+                    "clip-path": `url(#${clipId})`
+                }));
+            }
+            if (path.length) {
+                svg.appendChild(svgEl("path", {
+                    d: path.join(" "),
+                    fill: "none",
+                    stroke: "#ef4444",
+                    "stroke-width": 2,
+                    "stroke-linejoin": "round",
+                    "stroke-linecap": "round",
+                    "clip-path": `url(#${clipId})`
+                }));
+            }
+
+            // 临界点：0 dB / 线性 1，位于 180°；被围住时变红
+            const inside = nyqWinding !== 0;
+            const critColor = inside ? "#dc2626" : "#0f172a";
+            const crit = toXY(ny.scale === "linear" ? 1 : 0, Math.PI);
+            svg.appendChild(svgEl("circle", { cx: crit.x, cy: crit.y, r: 4, fill: critColor }));
+            const critLabel = svgEl("text", { x: crit.x, y: crit.y - 8, "font-size": 10, fill: critColor, "text-anchor": "middle" });
+            critLabel.textContent = "-1 (0 dB)";
+            svg.appendChild(critLabel);
+
+            // 右上角：Nyquist 判据 Z = N + P（H 视为单位负反馈开环回路增益 L）
+            const Ncw = -nyqWinding;                                  // 顺时针为正，符合 Nyquist 约定
+            const poleRoots = allRoots(state.poles);
+            const zeroRoots = allRoots(state.zeros);
+            const P = poleRoots.filter((r) => r.re > EPS).length;     // 开环右半平面极点
+            const Z = Ncw + P;                                        // 闭环右半平面极点
+            const improper = zeroRoots.length > poleRoots.length;
+            const reliable = !improper && !ny.truncated;
+            const readoutLines = [{ text: `N=${Ncw}  P=${P}  Z=${Z}`, color: "#475569" }];
+            if (reliable) {
+                readoutLines.push({ text: Z === 0 ? "闭环稳定" : "闭环不稳定", color: Z === 0 ? "#16a34a" : "#dc2626", bold: true });
+            } else {
+                readoutLines.push({ text: "判据不可靠", color: "#d97706", bold: true });
+                readoutLines.push({ text: improper ? "(非真有理)" : "(频率范围/增益过高)", color: "#d97706", small: true });
+            }
+            const lineH = 13;
+            const estW = (s) => { let w = 0; for (const ch of s) w += ch.charCodeAt(0) > 255 ? 11 : 6; return w; };
+            const boxW = Math.max(...readoutLines.map((l) => estW(l.text))) + 10;
+            const boxX = Math.max(2, width - 6 - boxW);
+            svg.appendChild(svgEl("rect", { x: boxX, y: 4, width: boxW, height: readoutLines.length * lineH + 6, rx: 3, fill: "white", opacity: 0.82 }));
+            readoutLines.forEach((l, i) => {
+                const t = svgEl("text", { x: width - 10, y: 16 + i * lineH, "font-size": l.small ? 9 : 10, fill: l.color, "text-anchor": "end" });
+                if (l.bold) t.setAttribute("font-weight", "600");
+                t.textContent = l.text;
+                svg.appendChild(t);
+            });
+
+            // 共享 cursor：红色空心圆 + 频率标签
+            if (Number.isFinite(state.bodeCursorW)) {
+                const w = clamp(state.bodeCursorW, ny.wMin, ny.wMax);
+                const h = hAt(w, state.zeros, state.poles, gainK());
+                const m = cAbs(h);
+                const v = ny.scale === "linear" ? m : 20 * Math.log10(Math.max(m, 1e-18));
+                const a = Math.atan2(h.im, h.re);
+                const p = toXY(v, a);
+                svg.appendChild(svgEl("circle", { cx: p.x, cy: p.y, r: 5, fill: "none", stroke: "#ef4444", "stroke-width": 2 }));
+                const label = `ω=${fmt(w, 5)} rad/s`;
+                const lw = label.length * 6.0 + 8;
+                const lx = clamp(p.x + 8, 2, Math.max(2, width - lw - 2));
+                const ly = clamp(p.y - 8, 12, height - 4);
+                svg.appendChild(svgEl("rect", { x: lx - 3, y: ly - 10, width: lw, height: 14, rx: 3, fill: "white", opacity: 0.85 }));
+                const t = svgEl("text", { x: lx, y: ly, "font-size": 10, fill: "#ef4444" });
+                t.textContent = label;
+                svg.appendChild(t);
+            }
+
+            state.nyquistGeom = { cx, cy, maxR, width, height, wMin: ny.wMin, wMax: ny.wMax, points };
+        }
+
         function bodeExactFor(freqs, zeroEntries, poleEntries, k) {
             const rawPhase = [];
             const mag = freqs.map((w) => {
@@ -2470,7 +2893,32 @@
             if (!warnings.length) $("systemNotice").textContent = "所有视图会随零极点、增益和范围设置实时更新。";
         }
 
+        function updateViewVisibility() {
+            const v = state.views;
+            $("bodeSection").classList.toggle("hidden", !v.bode);
+            $("nyquistSection").classList.toggle("hidden", !v.nyquist);
+            $("impulseSection").classList.toggle("hidden", !v.impulse);
+            $("stepSection").classList.toggle("hidden", !v.step);
+            $("topRow").classList.toggle("hidden", !(v.bode || v.nyquist));
+            $("bottomGrid").classList.toggle("hidden", !(v.impulse || v.step));
+            [["viewToggleBode", "bode"], ["viewToggleNyquist", "nyquist"], ["viewToggleImpulse", "impulse"], ["viewToggleStep", "step"]].forEach(([id, key]) => {
+                $(id).classList.toggle("active", !!v[key]);
+            });
+        }
+
+        function updateNyquistControls() {
+            const ny = state.nyquist;
+            const activeCls = "flex-1 px-3 py-1 text-xs rounded bg-white shadow-sm font-medium text-slate-800";
+            const idleCls = "flex-1 px-3 py-1 text-xs rounded font-medium text-slate-500 hover:text-slate-700";
+            $("nyquistScaleLog").className = ny.scale === "log" ? activeCls : idleCls;
+            $("nyquistScaleLinear").className = ny.scale === "linear" ? activeCls : idleCls;
+            $("nyquistFill").checked = ny.fill;
+            $("resetNyquistView").classList.toggle("hidden", !ny.viewOverridden);
+        }
+
         function renderPlots() {
+            updateViewVisibility();
+            updateNyquistControls();
             const bode = currentBode();
             updateRangeInputs();
             const selected = selectedEntry();
@@ -2565,18 +3013,28 @@
                 : { freqs: bode.activeFreqs, mag: bode.active.mag, phase: bode.active.phase };
             const cursor = bodeCursorSnapshot(cursorSource);
             appendBodeCursorSeries(magSeries, phaseSeries, cursor);
-            const magViewport = svgViewport($("magPlot"), 800, 240);
-            const phaseViewport = svgViewport($("phasePlot"), 800, 240);
-            drawBodePlot($("magPlot"), magViewport.width, magViewport.height, bode.freqs, magSeries, state.ranges.magMin, state.ranges.magMax, "Magnitude (dB)");
-            drawBodePlot($("phasePlot"), phaseViewport.width, phaseViewport.height, bode.freqs, phaseSeries, state.ranges.phaseMin, state.ranges.phaseMax, "Phase (deg)");
+            if (state.views.bode) {
+                const magViewport = svgViewport($("magPlot"), 800, 240);
+                const phaseViewport = svgViewport($("phasePlot"), 800, 240);
+                drawBodePlot($("magPlot"), magViewport.width, magViewport.height, bode.freqs, magSeries, state.ranges.magMin, state.ranges.magMax, "Magnitude (dB)");
+                drawBodePlot($("phasePlot"), phaseViewport.width, phaseViewport.height, bode.freqs, phaseSeries, state.ranges.phaseMin, state.ranges.phaseMax, "Phase (deg)");
+            }
+
+            if (state.views.nyquist) {
+                drawNyquistPlot($("nyquistPlot"), currentNyquist());
+            }
 
             const autoImpulse = plotTimeResponse("impulse");
             const autoStep = plotTimeResponse("step");
             updateTimeRanges(autoImpulse, autoStep);
-            const impulse = plotTimeResponse("impulse", state.ranges.impulseTMin, state.ranges.impulseTMax);
-            const step = plotTimeResponse("step", state.ranges.stepTMin, state.ranges.stepTMax);
-            drawTimePlot($("impulsePlot"), impulse, state.ranges.impulseYMin, state.ranges.impulseYMax, "#10b981", "Impulse");
-            drawTimePlot($("stepPlot"), step, state.ranges.stepYMin, state.ranges.stepYMax, "#8b5cf6", "Step");
+            if (state.views.impulse) {
+                const impulse = plotTimeResponse("impulse", state.ranges.impulseTMin, state.ranges.impulseTMax);
+                drawTimePlot($("impulsePlot"), impulse, state.ranges.impulseYMin, state.ranges.impulseYMax, "#10b981", "Impulse");
+            }
+            if (state.views.step) {
+                const step = plotTimeResponse("step", state.ranges.stepTMin, state.ranges.stepTMax);
+                drawTimePlot($("stepPlot"), step, state.ranges.stepYMin, state.ranges.stepYMax, "#8b5cf6", "Step");
+            }
             systemWarnings(autoImpulse.isImproper ? "当前传递函数非严格真有理，时域图忽略瞬时冲激项。" : "");
         }
 
@@ -3267,6 +3725,13 @@
             $("clearSelectionFromBode").addEventListener("click", () => { setSelected(null); render(); });
             $("clearSelectionFromImpulse").addEventListener("click", () => { setSelected(null); render(); });
             $("clearSelectionFromStep").addEventListener("click", () => { setSelected(null); render(); });
+            [["viewToggleBode", "bode"], ["viewToggleNyquist", "nyquist"], ["viewToggleImpulse", "impulse"], ["viewToggleStep", "step"]].forEach(([id, key]) => {
+                $(id).addEventListener("click", () => toggleView(key));
+            });
+            $("nyquistScaleLog").addEventListener("click", () => setNyquistScale("log"));
+            $("nyquistScaleLinear").addEventListener("click", () => setNyquistScale("linear"));
+            $("nyquistFill").addEventListener("change", (e) => { state.nyquist.fill = e.target.checked; render(); });
+            $("resetNyquistView").addEventListener("click", resetNyquistView);
             $("pzLogScale").addEventListener("change", (e) => { state.pzLogScale = e.target.checked; render(); });
             $("addZero").addEventListener("click", () => addEntry("zero"));
             $("addPole").addEventListener("click", () => addEntry("pole"));
@@ -3339,6 +3804,17 @@
             window.addEventListener("pointercancel", bodePointerUp);
             window.addEventListener("pointerup", timePointerUp);
             window.addEventListener("pointercancel", timePointerUp);
+            window.addEventListener("pointerup", nyquistPointerUp);
+            window.addEventListener("pointercancel", nyquistPointerUp);
+            (() => {
+                const plot = $("nyquistPlot");
+                plot.addEventListener("contextmenu", (e) => e.preventDefault());
+                plot.addEventListener("wheel", nyquistWheel, { passive: false });
+                plot.addEventListener("pointerdown", nyquistPointerDown);
+                plot.addEventListener("pointermove", nyquistPointerMove);
+                plot.addEventListener("pointerup", nyquistPointerUp);
+                plot.addEventListener("pointercancel", nyquistPointerUp);
+            })();
             ["magPlot", "phasePlot"].forEach((id) => {
                 const plot = $(id);
                 plot.addEventListener("contextmenu", (e) => e.preventDefault());
@@ -3486,6 +3962,178 @@
                 e.currentTarget.releasePointerCapture(e.pointerId);
             }
             render();
+        }
+
+        function toggleView(key) {
+            state.views[key] = !state.views[key];
+            render();
+        }
+
+        function setNyquistScale(scale) {
+            if (state.nyquist.scale === scale) return;
+            state.nyquist.scale = scale;
+            state.nyquist.radialDirty = true;
+            state.nyquist.viewOverridden = false;
+            render();
+        }
+
+        function resetNyquistView() {
+            state.nyquist.viewOverridden = false;
+            state.nyquist.radialDirty = true;
+            render();
+        }
+
+        function nyquistRadialMaxCap() {
+            const ny = state.nyquist;
+            if (ny.scale === "linear") {
+                const maxLin = Number.isFinite(ny.dataMaxLin) ? ny.dataMaxLin : 1;
+                return Math.max(maxLin * 10, NYQUIST_LIN_MAX);
+            }
+            const maxDb = Number.isFinite(ny.dataMaxDb) ? ny.dataMaxDb : 0;
+            return Math.max(maxDb + 20, 10);
+        }
+
+        function nyquistRadialMaxFloor() {
+            const ny = state.nyquist;
+            const v = ny.scale === "linear" ? ny.dataSecondMinLin : ny.dataSecondMinDb;
+            // 放大到极限时仍保证圆心外至少含第二小数据点；下限须高于圆心值
+            return Number.isFinite(v) ? Math.max(v, ny.radialMin + 1e-6) : ny.radialMin + 1e-6;
+        }
+
+        function nyquistZoomSpan(scale) {
+            const ny = state.nyquist;
+            const span = ny.radialMax - ny.radialMin;
+            if (!(span > 0) || !(scale > 0)) return;
+            const nextSpan = span * scale;
+            ny.radialMax = clamp(ny.radialMin + nextSpan, nyquistRadialMaxFloor(), nyquistRadialMaxCap());
+            ny.viewOverridden = true;
+            ny.radialDirty = false;
+        }
+
+        function nyquistWheel(e) {
+            e.preventDefault();
+            nyquistZoomSpan(Math.exp(e.deltaY * 0.001));
+            render();
+        }
+
+        function nearestNyquistFreq(point) {
+            const geom = state.nyquistGeom;
+            if (!geom || !geom.points || !geom.points.length || !point) return null;
+            let best = null;
+            let bestDist = Infinity;
+            geom.points.forEach((p) => {
+                const dx = p.x - point.x;
+                const dy = p.y - point.y;
+                const d = dx * dx + dy * dy;
+                if (d < bestDist) { bestDist = d; best = p; }
+            });
+            if (!best) return null;
+            return { w: best.w, dist: Math.sqrt(bestDist) };
+        }
+
+        function setNyquistCursorFromPointer(e) {
+            const point = plotPointFromClient($("nyquistPlot"), e.clientX, e.clientY, 360, 360);
+            const near = nearestNyquistFreq(point);
+            if (near && near.dist <= NYQUIST_PICK_TOL) {
+                if (state.bodeCursorW !== near.w) {
+                    state.bodeCursorW = near.w;
+                    render();
+                }
+            } else if (Number.isFinite(state.bodeCursorW)) {
+                state.bodeCursorW = null;
+                render();
+            }
+        }
+
+        function nyquistPointerDown(e) {
+            if (e.pointerType === "touch") {
+                nyquistTouchDown(e);
+                return;
+            }
+            if (e.button === 2) {
+                // 奈奎斯特图不允许平移
+                e.preventDefault();
+                return;
+            }
+            if (e.button !== 0) return;
+            e.preventDefault();
+            state.nyquist.pointerId = e.pointerId;
+            e.currentTarget.setPointerCapture(e.pointerId);
+            setNyquistCursorFromPointer(e);
+        }
+
+        function nyquistPointerMove(e) {
+            if (e.pointerType === "touch") {
+                nyquistTouchMove(e);
+                return;
+            }
+            if (state.nyquist.pointerId !== e.pointerId) return;
+            setNyquistCursorFromPointer(e);
+        }
+
+        function nyquistPointerUp(e) {
+            if (e.pointerType === "touch") {
+                nyquistTouchUp(e);
+                return;
+            }
+            if (state.nyquist.pointerId !== e.pointerId) return;
+            state.nyquist.pointerId = null;
+            state.bodeCursorW = null;
+            if (e.currentTarget.hasPointerCapture && e.currentTarget.hasPointerCapture(e.pointerId)) {
+                e.currentTarget.releasePointerCapture(e.pointerId);
+            }
+            render();
+        }
+
+        function nyquistTouchDown(e) {
+            const tp = state.nyquist.touchPoints;
+            tp.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
+            if (e.currentTarget.setPointerCapture) e.currentTarget.setPointerCapture(e.pointerId);
+            if (tp.size >= 2) {
+                const pts = [...tp.values()].slice(0, 2);
+                state.nyquist.pinchStart = {
+                    dist: Math.hypot(pts[0].clientX - pts[1].clientX, pts[0].clientY - pts[1].clientY),
+                    span: state.nyquist.radialMax - state.nyquist.radialMin
+                };
+                state.bodeCursorW = null;
+                render();
+            } else {
+                setNyquistCursorFromPointer(e);
+            }
+        }
+
+        function nyquistTouchMove(e) {
+            const tp = state.nyquist.touchPoints;
+            if (!tp.has(e.pointerId)) return;
+            tp.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
+            if (tp.size >= 2 && state.nyquist.pinchStart) {
+                const pts = [...tp.values()].slice(0, 2);
+                const dist = Math.hypot(pts[0].clientX - pts[1].clientX, pts[0].clientY - pts[1].clientY);
+                const start = state.nyquist.pinchStart;
+                if (dist > 1 && start.dist > 1) {
+                    const ny = state.nyquist;
+                    const nextSpan = start.span * (start.dist / dist);
+                    ny.radialMax = clamp(ny.radialMin + nextSpan, nyquistRadialMaxFloor(), nyquistRadialMaxCap());
+                    ny.viewOverridden = true;
+                    ny.radialDirty = false;
+                    render();
+                }
+            } else if (tp.size === 1) {
+                setNyquistCursorFromPointer(e);
+            }
+        }
+
+        function nyquistTouchUp(e) {
+            const tp = state.nyquist.touchPoints;
+            tp.delete(e.pointerId);
+            if (e.currentTarget && e.currentTarget.hasPointerCapture && e.currentTarget.hasPointerCapture(e.pointerId)) {
+                e.currentTarget.releasePointerCapture(e.pointerId);
+            }
+            if (tp.size < 2) state.nyquist.pinchStart = null;
+            if (tp.size === 0) {
+                state.bodeCursorW = null;
+                render();
+            }
         }
 
         function pzPointerDown(e) {
