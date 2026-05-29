@@ -48,9 +48,9 @@
                 </svg>
             </div>
             <h1 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-600">bode-sketch</h1>
-            <span class="text-xs font-semibold text-slate-400">v1.3</span>
+            <span class="text-xs font-semibold text-slate-400">v1.4</span>
             <span class="hidden sm:inline text-xs text-slate-500">
-                by <a href="https://github.com/many-question" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-700 hover:underline">many_question</a> with Codex
+                with Claude Code
             </span>
         </div>
         <div class="ml-auto hidden sm:flex items-center gap-4 text-sm">
@@ -76,6 +76,9 @@
                     <li>在零极点图中拖动对象可以调整位置。</li>
                     <li>用左栏顶部的“视窗”开关可显示或隐藏波特图、奈奎斯特图、冲激响应、阶跃响应。</li>
                     <li>奈奎斯特图为极坐标，半径可在右上角设置里切换对数(dB)/线性；滚轮缩放、不可平移；左键按住靠近曲线数据点会用红色空心点标出并与波特图光标联动。</li>
+                    <li>奈奎斯特图会画出正频率（红）与负频率镜像（浅红）的完整围线，并用半透明红填充“内部”（按环绕数 nonzero 规则，正反绕行自动抵消）。</li>
+                    <li>奈奎斯特图按 Nyquist 判据 <span class="font-mono">Z = N + P</span> 判定闭环稳定性：把 H(s) 视为单位负反馈的开环回路增益 L，N 为曲线顺时针环绕 −1 的圈数，P 为开环右半平面极点数，Z 为闭环右半平面极点数；Z=0 即闭环稳定。−1 点被环绕时变红，右上角给出 N、P、Z 与结论。</li>
+                    <li>jω 轴上的极点（积分器、纯虚极点对）用右半平面缩进圆弧处理，不计入 P；右半平面零点无需特殊处理。非真有理或增益过高致频率范围不足时会提示“判据不可靠”。</li>
                     <li>上方波特图支持精确模式和折线草绘模式。</li>
                     <li>点击零点或极点可查看该对象对波特图的贡献。</li>
                     <li>选中极点时，冲激响应和阶跃响应会高亮显示该极点对应的模态贡献。</li>
@@ -207,7 +210,7 @@
                                 <input id="nyquistFill" type="checkbox" class="rounded border-slate-300 text-red-600 focus:ring-red-500" checked>
                                 内部填充（半透明红，按环绕数计）
                             </label>
-                            <p class="mt-2 text-slate-400 leading-5">对数模式半径对应波特图幅度 dB，圆心为最小幅度；黑点为 -1 (0 dB, 180°) 临界点，被环绕时变红。填充按环绕数 nonzero 规则，正反绕行自动抵消。右上角按 Nyquist 判据 <b>Z=N+P</b>（H 视为单位负反馈开环回路增益 L，N 取顺时针为正，P 为开环右半平面极点数）给出闭环稳定性；含 jω 轴极点或非真有理时判据不可靠。</p>
+                            <p class="mt-2 text-slate-400 leading-5">对数模式半径对应波特图幅度 dB，圆心为最小幅度；黑点为 -1 (0 dB, 180°) 临界点，被环绕时变红。填充按环绕数 nonzero 规则，正反绕行自动抵消。右上角按 Nyquist 判据 <b>Z=N+P</b>（H 视为单位负反馈开环回路增益 L，N 取顺时针为正，P 为开环右半平面极点数）给出闭环稳定性；jω 轴极点用右半平面缩进圆弧处理；非真有理或增益过高致频率范围不足时判据不可靠。</p>
                         </div>
                     </details>
                 </div>
@@ -1597,6 +1600,58 @@
             return Math.round(total / (2 * Math.PI));
         }
 
+        // 构造含 jω 轴极点右半平面缩进的闭合奈奎斯特围线（复平面 {x:re,y:im}）。
+        // 每个 jω 极点处插入大半径圆弧（顺时针扫 m·π），使该极点被排除在围线之外，
+        // 从而 -1 的环绕数（及 Z=N+P 判据）对积分器/纯虚极点也成立。
+        function nyquistIndentedContour(points) {
+            if (points.length < 2) return [];
+            const axis = allRoots(state.poles).filter((r) => Math.abs(r.re) <= EPS);
+            const mOrigin = axis.filter((r) => Math.abs(r.im) <= EPS).length;
+            const posPoles = [];
+            axis.filter((r) => r.im > EPS).forEach((r) => {
+                const e = posPoles.find((x) => Math.abs(x.w0 - r.im) <= 1e-6 * Math.max(1, r.im));
+                if (e) e.m += 1; else posPoles.push({ w0: r.im, m: 1 });
+            });
+            posPoles.sort((a, b) => a.w0 - b.w0);
+            const Mmax = points.reduce((mx, p) => Math.max(mx, Math.hypot(p.re, p.im)), 1);
+            const Lc = (w) => { const h = hAt(w); return { x: h.re, y: h.im }; };
+            const pushArc = (arr, R, a0, m) => {
+                const steps = Math.max(8, Math.ceil(m * 16));
+                for (let s = 1; s <= steps; s++) {
+                    const a = a0 - m * Math.PI * s / steps; // 顺时针（RHP 缩进）
+                    arr.push({ x: R * Math.cos(a), y: R * Math.sin(a) });
+                }
+            };
+            const Ppos = [];
+            let pp = 0;
+            for (let i = 0; i < points.length; i++) {
+                Ppos.push({ x: points[i].re, y: points[i].im });
+                while (pp < posPoles.length && i + 1 < points.length
+                       && points[i].w < posPoles[pp].w0 && points[i + 1].w >= posPoles[pp].w0) {
+                    const w0 = posPoles[pp].w0, m = posPoles[pp].m;
+                    const d = Math.max(w0 * 1e-3, 1e-9);
+                    const lo = Lc(w0 - d), hi = Lc(w0 + d);
+                    const R = 10 * Math.max(Math.hypot(lo.x, lo.y), Math.hypot(hi.x, hi.y), Mmax);
+                    const aLo = Math.atan2(lo.y, lo.x);
+                    Ppos.push(lo, { x: R * Math.cos(aLo), y: R * Math.sin(aLo) });
+                    pushArc(Ppos, R, aLo, m);
+                    Ppos.push(hi);
+                    pp += 1;
+                }
+            }
+            const full = [];
+            for (let i = Ppos.length - 1; i >= 0; i--) full.push({ x: Ppos[i].x, y: -Ppos[i].y }); // 负频 = 共轭逆序
+            if (mOrigin > 0) {
+                const last = full[full.length - 1];
+                const R = 10 * Math.max(Math.hypot(last.x, last.y), Mmax);
+                const a0 = Math.atan2(last.y, last.x);
+                full.push({ x: R * Math.cos(a0), y: R * Math.sin(a0) });
+                pushArc(full, R, a0, mOrigin);
+            }
+            for (let i = 0; i < Ppos.length; i++) full.push(Ppos[i]);
+            return full;
+        }
+
         function secondSmallest(values, fallback) {
             let m1 = Infinity;
             let m2 = Infinity;
@@ -1743,14 +1798,17 @@
                 negPath.push(`${negPath.length === 0 ? "M" : "L"} ${pn.x.toFixed(2)} ${pn.y.toFixed(2)}`);
             });
 
-            // 闭合围线 = 负频镜像(逆序) + 正频；用于"内部"填充与 -1 环绕判定
+            // 闭合围线（复平面，含 jω 轴极点的右半平面缩进弧）：用于内部填充与 -1 环绕判定
             let nyqWinding = 0;
-            if (points.length >= 2) {
-                const contourPts = [];
-                for (let i = points.length - 1; i >= 0; i--) contourPts.push({ x: points[i].x, y: 2 * cy - points[i].y });
-                for (let i = 0; i < points.length; i++) contourPts.push({ x: points[i].x, y: points[i].y });
+            const windC = nyquistIndentedContour(points);
+            if (windC.length >= 3) {
                 if (state.nyquist.fill) {
-                    const fillD = contourPts.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(" ") + " Z";
+                    const fillD = windC.map((p, i) => {
+                        const m = Math.hypot(p.x, p.y);
+                        const v = ny.scale === "linear" ? m : 20 * Math.log10(Math.max(m, 1e-18));
+                        const s = toXY(v, Math.atan2(p.y, p.x));
+                        return `${i === 0 ? "M" : "L"} ${s.x.toFixed(2)} ${s.y.toFixed(2)}`;
+                    }).join(" ") + " Z";
                     svg.appendChild(svgEl("path", {
                         d: fillD,
                         fill: "#ef4444",
@@ -1760,11 +1818,7 @@
                         "clip-path": `url(#${clipId})`
                     }));
                 }
-                // -1 环绕数在复平面上按真实 H(jω) 闭合围线计算（math 取向，符号正负即逆/顺时针）
-                const contourC = [];
-                for (let i = points.length - 1; i >= 0; i--) contourC.push({ x: points[i].re, y: -points[i].im });
-                for (let i = 0; i < points.length; i++) contourC.push({ x: points[i].re, y: points[i].im });
-                nyqWinding = polygonWinding(contourC, -1, 0);
+                nyqWinding = polygonWinding(windC, -1, 0);
             }
 
             if (negPath.length) {
@@ -1805,16 +1859,14 @@
             const zeroRoots = allRoots(state.zeros);
             const P = poleRoots.filter((r) => r.re > EPS).length;     // 开环右半平面极点
             const Z = Ncw + P;                                        // 闭环右半平面极点
-            const hasAxisPole = poleRoots.some((r) => Math.abs(r.re) <= EPS);
             const improper = zeroRoots.length > poleRoots.length;
-            const reliable = !hasAxisPole && !improper && !ny.truncated;
+            const reliable = !improper && !ny.truncated;
             const readoutLines = [{ text: `N=${Ncw}  P=${P}  Z=${Z}`, color: "#475569" }];
             if (reliable) {
                 readoutLines.push({ text: Z === 0 ? "闭环稳定" : "闭环不稳定", color: Z === 0 ? "#16a34a" : "#dc2626", bold: true });
             } else {
-                const reason = hasAxisPole ? "(含 jω 轴极点)" : improper ? "(非真有理)" : "(频率范围/增益过高)";
                 readoutLines.push({ text: "判据不可靠", color: "#d97706", bold: true });
-                readoutLines.push({ text: reason, color: "#d97706", small: true });
+                readoutLines.push({ text: improper ? "(非真有理)" : "(频率范围/增益过高)", color: "#d97706", small: true });
             }
             const lineH = 13;
             const estW = (s) => { let w = 0; for (const ch of s) w += ch.charCodeAt(0) > 255 ? 11 : 6; return w; };
