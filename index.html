@@ -203,7 +203,11 @@
                                 <button id="nyquistScaleLog" class="flex-1 px-3 py-1 text-xs rounded font-medium">对数 (dB)</button>
                                 <button id="nyquistScaleLinear" class="flex-1 px-3 py-1 text-xs rounded font-medium">线性</button>
                             </div>
-                            <p class="mt-2 text-slate-400 leading-5">对数模式半径对应波特图幅度 dB，圆心为最小幅度；黑点为 -1 (0 dB, 180°) 临界点。</p>
+                            <label class="mt-3 flex items-center gap-2 text-slate-600 cursor-pointer">
+                                <input id="nyquistFill" type="checkbox" class="rounded border-slate-300 text-red-600 focus:ring-red-500" checked>
+                                内部填充（半透明红，按环绕数计）
+                            </label>
+                            <p class="mt-2 text-slate-400 leading-5">对数模式半径对应波特图幅度 dB，圆心为最小幅度；黑点为 -1 (0 dB, 180°) 临界点，被环绕时变红。填充按环绕数 nonzero 规则，正反绕行自动抵消。右上角按 Nyquist 判据 <b>Z=N+P</b>（H 视为单位负反馈开环回路增益 L，N 取顺时针为正，P 为开环右半平面极点数）给出闭环稳定性；含 jω 轴极点或非真有理时判据不可靠。</p>
                         </div>
                     </details>
                 </div>
@@ -415,6 +419,7 @@
             views: { bode: true, nyquist: true, impulse: true, step: true },
             nyquist: {
                 scale: "log",
+                fill: true,
                 radialMin: -60, radialMax: 40,
                 autoRadial: true,
                 radialDirty: true,
@@ -536,6 +541,7 @@
             state.pzAddMode = null;
             state.views = { bode: true, nyquist: true, impulse: true, step: true };
             state.nyquist.scale = "log";
+            state.nyquist.fill = true;
             state.nyquist.autoRadial = true;
             state.nyquist.radialDirty = true;
             state.nyquist.viewOverridden = false;
@@ -1578,6 +1584,19 @@
             return { step, ticks };
         }
 
+        function polygonWinding(poly, px, py) {
+            // 有符号转角求和 / 2π，给出闭合多边形绕 (px,py) 的环绕数（含正反抵消）
+            let total = 0;
+            for (let i = 0; i < poly.length; i++) {
+                const a = poly[i];
+                const b = poly[(i + 1) % poly.length];
+                const ax = a.x - px, ay = a.y - py;
+                const bx = b.x - px, by = b.y - py;
+                total += Math.atan2(ax * by - ay * bx, ax * bx + ay * by);
+            }
+            return Math.round(total / (2 * Math.PI));
+        }
+
         function secondSmallest(values, fallback) {
             let m1 = Infinity;
             let m2 = Infinity;
@@ -1591,11 +1610,31 @@
             return fallback;
         }
 
+        function nyquistSweepRange() {
+            // 起点用波特图自动频率范围；但高增益严格真系统的 0dB 穿越/趋于原点可能远高于
+            // 极零点频率，需把高频端扩展到曲线衰减到接近原点（|H| 远小于 -1 的量级 1），
+            // 围线才能在原点附近正确闭合，包住/不包住 -1 才判得对。
+            let [w0, w1] = autoFrequencyRange();
+            if (!(w0 > 0)) w0 = 0.1;
+            if (!(w1 > w0)) w1 = w0 * 1000;
+            const k = gainK();
+            const strictlyProper = allRoots(state.poles).length > allRoots(state.zeros).length;
+            if (strictlyProper) {
+                let guard = 0;
+                while (w1 < 1e12 && guard++ < 80 && cAbs(hAt(w1, state.zeros, state.poles, k)) > 1e-2) w1 *= 10;
+                if (w1 > 1e12) w1 = 1e12;
+            }
+            const endMag = cAbs(hAt(w1, state.zeros, state.poles, k));
+            const truncated = strictlyProper && endMag > 0.1;
+            return { wMin: w0, wMax: w1, truncated };
+        }
+
         function currentNyquist() {
             const ny = state.nyquist;
-            const [f0, f1] = autoFrequencyRange();
-            const wMin = f0 > 0 ? f0 : 0.1;
-            const wMax = f1 > wMin ? f1 : wMin * 1000;
+            const sweep = nyquistSweepRange();
+            const wMin = sweep.wMin;
+            const wMax = sweep.wMax;
+            ny.rangeTruncated = sweep.truncated;
             const freqs = logspace(wMin, wMax, BODE_POINT_COUNT);
             const k = gainK();
             const magDb = [];
@@ -1627,7 +1666,7 @@
                 if (!(ny.radialMax > ny.radialMin)) ny.radialMax = ny.radialMin + 1;
                 ny.radialDirty = false;
             }
-            return { freqs, magDb, magLin, ang, wMin, wMax, radialMin: ny.radialMin, radialMax: ny.radialMax, scale: ny.scale };
+            return { freqs, magDb, magLin, ang, wMin, wMax, radialMin: ny.radialMin, radialMax: ny.radialMax, scale: ny.scale, truncated: sweep.truncated };
         }
 
         function drawNyquistPlot(svg, ny) {
@@ -1697,11 +1736,37 @@
                 const a = ny.ang[i];
                 if (!Number.isFinite(v) || !Number.isFinite(a)) return;
                 const p = toXY(v, a);
-                points.push({ w, x: p.x, y: p.y });
+                const mlin = ny.magLin[i];
+                points.push({ w, x: p.x, y: p.y, re: mlin * Math.cos(a), im: mlin * Math.sin(a) });
                 path.push(`${path.length === 0 ? "M" : "L"} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`);
                 const pn = toXY(v, -a);
                 negPath.push(`${negPath.length === 0 ? "M" : "L"} ${pn.x.toFixed(2)} ${pn.y.toFixed(2)}`);
             });
+
+            // 闭合围线 = 负频镜像(逆序) + 正频；用于"内部"填充与 -1 环绕判定
+            let nyqWinding = 0;
+            if (points.length >= 2) {
+                const contourPts = [];
+                for (let i = points.length - 1; i >= 0; i--) contourPts.push({ x: points[i].x, y: 2 * cy - points[i].y });
+                for (let i = 0; i < points.length; i++) contourPts.push({ x: points[i].x, y: points[i].y });
+                if (state.nyquist.fill) {
+                    const fillD = contourPts.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(" ") + " Z";
+                    svg.appendChild(svgEl("path", {
+                        d: fillD,
+                        fill: "#ef4444",
+                        "fill-opacity": 0.13,
+                        "fill-rule": "nonzero",
+                        stroke: "none",
+                        "clip-path": `url(#${clipId})`
+                    }));
+                }
+                // -1 环绕数在复平面上按真实 H(jω) 闭合围线计算（math 取向，符号正负即逆/顺时针）
+                const contourC = [];
+                for (let i = points.length - 1; i >= 0; i--) contourC.push({ x: points[i].re, y: -points[i].im });
+                for (let i = 0; i < points.length; i++) contourC.push({ x: points[i].re, y: points[i].im });
+                nyqWinding = polygonWinding(contourC, -1, 0);
+            }
+
             if (negPath.length) {
                 svg.appendChild(svgEl("path", {
                     d: negPath.join(" "),
@@ -1725,12 +1790,43 @@
                 }));
             }
 
-            // 临界点：0 dB / 线性 1，位于 180°
+            // 临界点：0 dB / 线性 1，位于 180°；被围住时变红
+            const inside = nyqWinding !== 0;
+            const critColor = inside ? "#dc2626" : "#0f172a";
             const crit = toXY(ny.scale === "linear" ? 1 : 0, Math.PI);
-            svg.appendChild(svgEl("circle", { cx: crit.x, cy: crit.y, r: 4, fill: "#0f172a" }));
-            const critLabel = svgEl("text", { x: crit.x, y: crit.y - 8, "font-size": 10, fill: "#0f172a", "text-anchor": "middle" });
+            svg.appendChild(svgEl("circle", { cx: crit.x, cy: crit.y, r: 4, fill: critColor }));
+            const critLabel = svgEl("text", { x: crit.x, y: crit.y - 8, "font-size": 10, fill: critColor, "text-anchor": "middle" });
             critLabel.textContent = "-1 (0 dB)";
             svg.appendChild(critLabel);
+
+            // 右上角：Nyquist 判据 Z = N + P（H 视为单位负反馈开环回路增益 L）
+            const Ncw = -nyqWinding;                                  // 顺时针为正，符合 Nyquist 约定
+            const poleRoots = allRoots(state.poles);
+            const zeroRoots = allRoots(state.zeros);
+            const P = poleRoots.filter((r) => r.re > EPS).length;     // 开环右半平面极点
+            const Z = Ncw + P;                                        // 闭环右半平面极点
+            const hasAxisPole = poleRoots.some((r) => Math.abs(r.re) <= EPS);
+            const improper = zeroRoots.length > poleRoots.length;
+            const reliable = !hasAxisPole && !improper && !ny.truncated;
+            const readoutLines = [{ text: `N=${Ncw}  P=${P}  Z=${Z}`, color: "#475569" }];
+            if (reliable) {
+                readoutLines.push({ text: Z === 0 ? "闭环稳定" : "闭环不稳定", color: Z === 0 ? "#16a34a" : "#dc2626", bold: true });
+            } else {
+                const reason = hasAxisPole ? "(含 jω 轴极点)" : improper ? "(非真有理)" : "(频率范围/增益过高)";
+                readoutLines.push({ text: "判据不可靠", color: "#d97706", bold: true });
+                readoutLines.push({ text: reason, color: "#d97706", small: true });
+            }
+            const lineH = 13;
+            const estW = (s) => { let w = 0; for (const ch of s) w += ch.charCodeAt(0) > 255 ? 11 : 6; return w; };
+            const boxW = Math.max(...readoutLines.map((l) => estW(l.text))) + 10;
+            const boxX = Math.max(2, width - 6 - boxW);
+            svg.appendChild(svgEl("rect", { x: boxX, y: 4, width: boxW, height: readoutLines.length * lineH + 6, rx: 3, fill: "white", opacity: 0.82 }));
+            readoutLines.forEach((l, i) => {
+                const t = svgEl("text", { x: width - 10, y: 16 + i * lineH, "font-size": l.small ? 9 : 10, fill: l.color, "text-anchor": "end" });
+                if (l.bold) t.setAttribute("font-weight", "600");
+                t.textContent = l.text;
+                svg.appendChild(t);
+            });
 
             // 共享 cursor：红色空心圆 + 频率标签
             if (Number.isFinite(state.bodeCursorW)) {
@@ -2764,6 +2860,7 @@
             const idleCls = "flex-1 px-3 py-1 text-xs rounded font-medium text-slate-500 hover:text-slate-700";
             $("nyquistScaleLog").className = ny.scale === "log" ? activeCls : idleCls;
             $("nyquistScaleLinear").className = ny.scale === "linear" ? activeCls : idleCls;
+            $("nyquistFill").checked = ny.fill;
             $("resetNyquistView").classList.toggle("hidden", !ny.viewOverridden);
         }
 
@@ -3581,6 +3678,7 @@
             });
             $("nyquistScaleLog").addEventListener("click", () => setNyquistScale("log"));
             $("nyquistScaleLinear").addEventListener("click", () => setNyquistScale("linear"));
+            $("nyquistFill").addEventListener("change", (e) => { state.nyquist.fill = e.target.checked; render(); });
             $("resetNyquistView").addEventListener("click", resetNyquistView);
             $("pzLogScale").addEventListener("change", (e) => { state.pzLogScale = e.target.checked; render(); });
             $("addZero").addEventListener("click", () => addEntry("zero"));
